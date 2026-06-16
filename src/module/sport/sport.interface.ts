@@ -4,4 +4,3 @@ export interface ISport {
   createdAt: Date;
   updatedAt: Date;
 }
-

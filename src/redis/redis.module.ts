@@ -1,7 +1,7 @@
 // src/redis/redis.module.ts
-import { Global, Module } from '@nestjs/common'
-import { RedisService } from './redis.service'
-import Redis from 'ioredis'
+import { Global, Module } from '@nestjs/common';
+import { RedisService } from './redis.service';
+import Redis from 'ioredis';
 
 @Global()
 @Module({
@@ -13,10 +13,10 @@ import Redis from 'ioredis'
           host: process.env.REDIS_HOST || 'localhost',
           port: Number(process.env.REDIS_PORT) || 6379,
           password: process.env.REDIS_PASSWORD || undefined,
-        })
-        client.on('connect', () => console.log('✅ Redis connected'))
-        client.on('error', (err) => console.error('❌ Redis error:', err))
-        return client
+        });
+        client.on('connect', () => console.log('✅ Redis connected'));
+        client.on('error', (err) => console.error('❌ Redis error:', err));
+        return client;
       },
     },
     RedisService,

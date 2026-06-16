@@ -9,4 +9,3 @@ export interface IField {
   createdAt: Date;
   updatedAt: Date;
 }
-

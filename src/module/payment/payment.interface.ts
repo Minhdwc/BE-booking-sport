@@ -6,4 +6,3 @@ export interface IPayment {
   status: string;
   createdAt: Date;
 }
-

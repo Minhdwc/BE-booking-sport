@@ -7,4 +7,3 @@ export interface IBooking {
   status: string;
   createdAt: Date;
 }
-

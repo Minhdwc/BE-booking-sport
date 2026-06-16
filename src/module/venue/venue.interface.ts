@@ -6,4 +6,3 @@ export interface IVenue {
   createdAt: Date;
   updatedAt: Date;
 }
-

@@ -1,7 +1,7 @@
 // src/common/base.service.ts
-import { Injectable } from '@nestjs/common'
-import { SocketGateway } from '../socket/socket.service'
-import { RedisService } from '../redis/redis.service'
+import { Injectable } from '@nestjs/common';
+import { SocketGateway } from '../socket/socket.service';
+import { RedisService } from '../redis/redis.service';
 
 @Injectable()
 export class BaseService {

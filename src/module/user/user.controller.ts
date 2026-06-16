@@ -1,12 +1,18 @@
 import { Controller, Get, Post, Put, Delete, Body, Param, Req, UseGuards } from '@nestjs/common';
 import { UserService } from './user.service';
-import { CreateUserDto, UpdateUserDto, LoginDto, ChangePasswordDto, RefreshTokenDto } from './user.dto';
+import {
+  CreateUserDto,
+  UpdateUserDto,
+  LoginDto,
+  ChangePasswordDto,
+  RefreshTokenDto,
+} from './user.dto';
 import { AuthGuard } from '../../guards/auth.guard';
 import { RolesGuard } from '../../guards/roles.guard';
 
 @Controller('users')
 export class UserController {
-  constructor(private readonly userService: UserService) { }
+  constructor(private readonly userService: UserService) {}
 
   @Get()
   @UseGuards(AuthGuard)
@@ -35,7 +41,7 @@ export class UserController {
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly userService: UserService) { }
+  constructor(private readonly userService: UserService) {}
 
   @Post('register')
   register(@Body() body: CreateUserDto) {

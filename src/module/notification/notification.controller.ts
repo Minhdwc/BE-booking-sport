@@ -1,4 +1,16 @@
-import { Body, Controller, Delete, ForbiddenException, Get, Param, Patch, Post, Put, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  ForbiddenException,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Put,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import { AuthGuard } from '../../guards/auth.guard';
 import { RolesGuard } from '../../guards/roles.guard';
 import { CreateNotificationDto, UpdateNotificationDto } from './notification.dto';
@@ -16,7 +28,10 @@ export class NotificationController {
 
   @Get('user/:userId')
   @UseGuards(AuthGuard)
-  getByUser(@Param('userId') userId: string, @Req() request: { user: { id: string; role: string } }) {
+  getByUser(
+    @Param('userId') userId: string,
+    @Req() request: { user: { id: string; role: string } },
+  ) {
     if (request.user.role !== 'admin' && request.user.id !== userId) {
       throw new ForbiddenException('Access denied');
     }

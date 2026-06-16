@@ -6,4 +6,3 @@ export interface INotification {
   isRead: boolean;
   createdAt: Date;
 }
-

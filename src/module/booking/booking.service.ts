@@ -30,12 +30,15 @@ export class BookingService {
         and(
           eq(bookingsTable.fieldId, values.fieldId),
           eq(bookingsTable.timeslotId, values.timeslotId),
-          eq(bookingsTable.date, values.date)
-        )
+          eq(bookingsTable.date, values.date),
+        ),
       );
 
     if (conflict.length > 0) {
-      throw new HttpException('Field already booked for this time slot and date', HttpStatus.CONFLICT);
+      throw new HttpException(
+        'Field already booked for this time slot and date',
+        HttpStatus.CONFLICT,
+      );
     }
 
     const [booking] = await db.insert(bookingsTable).values(values).returning();
@@ -64,12 +67,15 @@ export class BookingService {
           eq(bookingsTable.fieldId, nextBooking.fieldId),
           eq(bookingsTable.timeslotId, nextBooking.timeslotId),
           eq(bookingsTable.date, nextBooking.date),
-          ne(bookingsTable.id, id)
-        )
+          ne(bookingsTable.id, id),
+        ),
       );
 
     if (conflict.length > 0) {
-      throw new HttpException('Field already booked for this time slot and date', HttpStatus.CONFLICT);
+      throw new HttpException(
+        'Field already booked for this time slot and date',
+        HttpStatus.CONFLICT,
+      );
     }
 
     const [booking] = await db
