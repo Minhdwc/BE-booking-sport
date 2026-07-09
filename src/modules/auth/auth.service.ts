@@ -54,7 +54,7 @@ export class AuthService {
   }
 
   async register(registerDto: RegisterDto) {
-    const { name, username, email, phone, password: rawPassword } = registerDto;
+    const { name, username, email, phone, role, password: rawPassword } = registerDto;
 
     const existingEmail = await this.prisma.user.findUnique({ where: { email } });
     if (existingEmail) {
@@ -69,7 +69,7 @@ export class AuthService {
     const hashedPassword = await bcrypt.hash(rawPassword, 10);
 
     const user = await this.prisma.user.create({
-      data: { name, username, email, phone, password: hashedPassword },
+      data: { name, username, email, phone, role, password: hashedPassword },
     });
 
     await this.queueService.sendWelcomeEmail(user.email, user.name);
@@ -96,5 +96,29 @@ export class AuthService {
     const { password, ...userWithoutPassword } = user;
 
     return { user: userWithoutPassword, accessToken, refreshToken };
+  }
+
+  refresh(refreshToken: string | undefined) {
+    if (!refreshToken) {
+      throw new UnauthorizedException('Refresh token không tồn tại');
+    }
+
+    const payload = JwtProvider.verifyToken(refreshToken, process.env.REFRESH_TOKEN_SECRET!);
+    if (!payload) {
+      throw new UnauthorizedException('Refresh token không hợp lệ hoặc đã hết hạn');
+    }
+
+    const accessToken = JwtProvider.generateToken(
+      {
+        id: payload.id,
+        email: payload.email,
+        role: payload.role,
+        venueId: payload.venueId,
+      },
+      process.env.ACCESS_TOKEN_SECRET!,
+      process.env.ACCESS_TOKEN_LIFE!,
+    );
+
+    return { accessToken };
   }
 }

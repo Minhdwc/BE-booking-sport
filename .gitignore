@@ -36,3 +36,14 @@ Thumbs.db
 
 # Misc
 *.tsbuildinfo
+#mcp
+/.claude
+/.codegraph
+/.cursor
+/.gemini
+/.kiro
+/.cursor
+.mcp.json
+AGENTS.md
+GEMINI.md
+opencode.jsonc

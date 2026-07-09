@@ -8,6 +8,7 @@ import { PaymentInfrastructureModule } from '@/infrastructure/payment/payment.mo
 import { QueueModule } from '@/infrastructure/queue/queue.module';
 import { RedisModule } from '@/infrastructure/redis/redis.module';
 import { SocketModule } from '@/infrastructure/socket/socket.module';
+import { AccountModule } from './modules/account/account.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { BookingsModule } from './modules/bookings/bookings.module';
 import { FieldsModule } from './modules/fields/fields.module';
@@ -33,6 +34,7 @@ import { VenuesModule } from './modules/venues/venues.module';
     PaymentInfrastructureModule,
     // Feature modules
     AuthModule,
+    AccountModule,
     UsersModule,
     SportsModule,
     VenuesModule,
