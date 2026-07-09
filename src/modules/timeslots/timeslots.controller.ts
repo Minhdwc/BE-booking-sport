@@ -1,0 +1,44 @@
+import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Public } from '@/common/decorators/public.decorator';
+import { Roles } from '@/common/decorators/roles.decorator';
+import { RolesGuard } from '@/common/guards';
+import { TimeslotsService } from './timeslots.service';
+import { CreateTimeslotDto, UpdateTimeslotDto } from './timeslots.dto';
+
+@Controller('timeslots')
+export class TimeslotsController {
+  constructor(private readonly timeslotsService: TimeslotsService) {}
+
+  @Public()
+  @Get()
+  findAll() {
+    return this.timeslotsService.findAll();
+  }
+
+  @Public()
+  @Get(':id')
+  findOne(@Param('id') id: string) {
+    return this.timeslotsService.findOne(id);
+  }
+
+  @Post()
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'staff', 'super_staff')
+  create(@Body() createTimeslotDto: CreateTimeslotDto) {
+    return this.timeslotsService.create(createTimeslotDto);
+  }
+
+  @Patch(':id')
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'staff', 'super_staff')
+  update(@Param('id') id: string, @Body() updateTimeslotDto: UpdateTimeslotDto) {
+    return this.timeslotsService.update(id, updateTimeslotDto);
+  }
+
+  @Delete(':id')
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'staff', 'super_staff')
+  remove(@Param('id') id: string) {
+    return this.timeslotsService.remove(id);
+  }
+}

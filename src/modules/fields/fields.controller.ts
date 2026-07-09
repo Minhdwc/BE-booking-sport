@@ -1,0 +1,50 @@
+import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { CurrentUser } from '@/common/decorators/current-user.decorator';
+import { Public } from '@/common/decorators/public.decorator';
+import { Roles } from '@/common/decorators/roles.decorator';
+import { RolesGuard } from '@/common/guards';
+import { JwtPayloadReturn } from '@/utils/jwt.util';
+import { FieldsService } from './fields.service';
+import { CreateFieldDto, UpdateFieldDto } from './fields.dto';
+
+@Controller('fields')
+export class FieldsController {
+  constructor(private readonly fieldsService: FieldsService) {}
+
+  @Public()
+  @Get()
+  findAll(@CurrentUser() user?: JwtPayloadReturn) {
+    return this.fieldsService.findAll(user);
+  }
+
+  @Public()
+  @Get(':id')
+  findOne(@Param('id') id: string, @CurrentUser() user?: JwtPayloadReturn) {
+    return this.fieldsService.findOne(id, user);
+  }
+
+  @Post()
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'staff', 'super_staff')
+  create(@Body() createFieldDto: CreateFieldDto, @CurrentUser() user: JwtPayloadReturn) {
+    return this.fieldsService.create(createFieldDto, user);
+  }
+
+  @Patch(':id')
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'staff', 'super_staff')
+  update(
+    @Param('id') id: string,
+    @Body() updateFieldDto: UpdateFieldDto,
+    @CurrentUser() user: JwtPayloadReturn,
+  ) {
+    return this.fieldsService.update(id, updateFieldDto, user);
+  }
+
+  @Delete(':id')
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'staff', 'super_staff')
+  remove(@Param('id') id: string, @CurrentUser() user: JwtPayloadReturn) {
+    return this.fieldsService.remove(id, user);
+  }
+}

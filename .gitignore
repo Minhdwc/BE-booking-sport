@@ -7,6 +7,10 @@
 # Coverage
 /coverage
 
+# Seed data
+/drizzle
+/src/seeds
+
 # Logs
 logs
 *.log

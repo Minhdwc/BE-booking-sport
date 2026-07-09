@@ -1,0 +1,133 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Booking {
+  id         String    @id @default(uuid())
+  userId     String
+  fieldId    String
+  timeslotId String
+  date       DateTime  @db.Date
+  status     String    @default("pending") // pending, confirmed, cancelled, completed
+  createdAt  DateTime  @default(now())
+  field      Field     @relation(fields: [fieldId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "bookings_fieldId_fields_id_fk")
+  timeslot   Timeslot  @relation(fields: [timeslotId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "bookings_timeslotId_timeslots_id_fk")
+  user       User      @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "bookings_userId_users_id_fk")
+  payments   Payment[]
+
+  @@unique([fieldId, date, timeslotId], map: "unique_booking")
+  @@map("bookings")
+}
+
+model Field {
+  id          String    @id @default(uuid())
+  name        String
+  description String?
+  price       Int
+  status      String    @default("active") // active, inactive
+  sportId     String
+  venueId     String
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  bookings    Booking[]
+  sport       Sport     @relation(fields: [sportId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fields_sportId_sports_id_fk")
+  venue       Venue     @relation(fields: [venueId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fields_venueId_venues_id_fk")
+  reviews     Review[]
+
+  @@map("fields")
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  title     String
+  message   String
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "notifications_userId_users_id_fk")
+
+  @@map("notifications")
+}
+
+model Payment {
+  id        String   @id @default(uuid())
+  bookingId String
+  amount    Int
+  method    String   @default("credit_card") // credit_card, bank_transfer, cash
+  status    String   @default("pending") // pending, paid, failed
+  createdAt DateTime @default(now()) @map("created_at")
+  booking   Booking  @relation(fields: [bookingId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "payments_bookingId_bookings_id_fk")
+
+  @@map("payments")
+}
+
+model Review {
+  id        String   @id @default(uuid())
+  userId    String
+  fieldId   String
+  rating    Int
+  comment   String?
+  createdAt DateTime @default(now()) @map("created_at")
+  field     Field    @relation(fields: [fieldId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "reviews_fieldId_fields_id_fk")
+  user      User     @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "reviews_userId_users_id_fk")
+
+  @@map("reviews")
+}
+
+model Sport {
+  id        String   @id @default(uuid())
+  name      String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  fields    Field[]
+
+  @@map("sports")
+}
+
+model Timeslot {
+  id        String    @id @default(uuid())
+  startTime DateTime  @map("startTime") @db.Time(6)
+  endTime   DateTime  @map("endTime") @db.Time(6)
+  createdAt DateTime  @default(now()) @map("created_at")
+  bookings  Booking[]
+
+  @@map("timeslots")
+}
+
+model User {
+  id            String         @id @default(uuid())
+  name          String
+  username      String
+  email         String         @unique()
+  phone         String         @unique()
+  password      String
+  role          String         @default("user") // user, admin, staff
+  venueId       String?
+  isActive      Boolean        @default(true)
+  createdAt     DateTime       @default(now()) @map("created_at")
+  updatedAt     DateTime       @updatedAt @map("updated_at")
+  bookings      Booking[]
+  notifications Notification[]
+  reviews       Review[]
+  venue         Venue?         @relation(fields: [venueId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+
+  @@map("users")
+}
+
+model Venue {
+  id          String   @id @default(uuid())
+  name        String
+  location    String
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  fields      Field[]
+  users       User[]
+
+  @@map("venues")
+}
