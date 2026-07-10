@@ -23,6 +23,10 @@ export class UpdateProfileDto {
   @IsOptional()
   @IsPhoneNumber('VN')
   phone?: string;
+
+  @IsOptional()
+  @IsString()
+  avatarUrl?: string;
 }
 
 export class ChangePasswordDto {

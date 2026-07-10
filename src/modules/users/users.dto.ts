@@ -45,6 +45,10 @@ export class CreateUserDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @IsOptional()
+  @IsString()
+  avatarUrl?: string;
 }
 
 export class UpdateUserDto {
@@ -81,4 +85,8 @@ export class UpdateUserDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @IsOptional()
+  @IsString()
+  avatarUrl?: string;
 }

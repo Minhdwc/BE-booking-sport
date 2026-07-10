@@ -1,4 +1,19 @@
-import { IsInt, IsNotEmpty, IsOptional, IsString, IsUUID, MaxLength, Min } from 'class-validator';
+import {
+  IsArray,
+  IsDateString,
+  IsInt,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  IsUUID,
+  MaxLength,
+  Min,
+} from 'class-validator';
+
+export class FieldAvailabilityQueryDto {
+  @IsDateString()
+  date: string;
+}
 
 export class CreateFieldDto {
   @IsString()
@@ -17,6 +32,11 @@ export class CreateFieldDto {
   @IsOptional()
   @IsString()
   status?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  images?: string[];
 
   @IsUUID()
   sportId: string;
@@ -44,6 +64,11 @@ export class UpdateFieldDto {
   @IsOptional()
   @IsString()
   status?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  images?: string[];
 
   @IsOptional()
   @IsUUID()

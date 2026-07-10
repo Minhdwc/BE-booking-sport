@@ -106,6 +106,36 @@ export class FieldsService {
     return this.prisma.field.delete({ where: { id } });
   }
 
+  async getAvailability(id: string, date: string, user?: JwtPayloadReturn) {
+    await this.findOne(id, user);
+
+    const timeslots = await this.prisma.timeslot.findMany({
+      orderBy: { startTime: 'asc' },
+    });
+
+    const bookedBookings = await this.prisma.booking.findMany({
+      where: {
+        fieldId: id,
+        date: new Date(date),
+        status: { notIn: ['cancelled'] },
+      },
+      select: { timeslotId: true },
+    });
+
+    const bookedTimeslotIds = new Set(bookedBookings.map((booking) => booking.timeslotId));
+
+    return {
+      fieldId: id,
+      date,
+      timeslots: timeslots.map((timeslot) => ({
+        id: timeslot.id,
+        startTime: timeslot.startTime,
+        endTime: timeslot.endTime,
+        status: bookedTimeslotIds.has(timeslot.id) ? 'booked' : 'available',
+      })),
+    };
+  }
+
   private async getVenueIdOfStaff(user: JwtPayloadReturn): Promise<string> {
     const currentUser = await this.prisma.user.findUnique({
       where: { id: user.id },

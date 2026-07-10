@@ -1,11 +1,11 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { CurrentUser } from '@/common/decorators/current-user.decorator';
 import { Public } from '@/common/decorators/public.decorator';
 import { Roles } from '@/common/decorators/roles.decorator';
 import { RolesGuard } from '@/common/guards';
 import { JwtPayloadReturn } from '@/utils/jwt.util';
 import { FieldsService } from './fields.service';
-import { CreateFieldDto, UpdateFieldDto } from './fields.dto';
+import { CreateFieldDto, FieldAvailabilityQueryDto, UpdateFieldDto } from './fields.dto';
 
 @Controller('fields')
 export class FieldsController {
@@ -15,6 +15,16 @@ export class FieldsController {
   @Get()
   findAll(@CurrentUser() user?: JwtPayloadReturn) {
     return this.fieldsService.findAll(user);
+  }
+
+  @Public()
+  @Get(':id/availability')
+  getAvailability(
+    @Param('id') id: string,
+    @Query() query: FieldAvailabilityQueryDto,
+    @CurrentUser() user?: JwtPayloadReturn,
+  ) {
+    return this.fieldsService.getAvailability(id, query.date, user);
   }
 
   @Public()

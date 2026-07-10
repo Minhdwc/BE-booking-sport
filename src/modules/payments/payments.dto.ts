@@ -1,12 +1,8 @@
-import { IsInt, IsNotEmpty, IsOptional, IsString, IsUUID, Min } from 'class-validator';
+import { IsNotEmpty, IsOptional, IsString, IsUUID } from 'class-validator';
 
 export class CreatePaymentDto {
   @IsUUID()
   bookingId: string;
-
-  @IsInt()
-  @Min(0)
-  amount: number;
 
   @IsOptional()
   @IsString()
@@ -23,11 +19,6 @@ export class UpdatePaymentDto {
   @IsOptional()
   @IsUUID()
   bookingId?: string;
-
-  @IsOptional()
-  @IsInt()
-  @Min(0)
-  amount?: number;
 
   @IsOptional()
   @IsString()

@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsArray, IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
 
 export class CreateVenueDto {
   @IsString()
@@ -13,6 +13,11 @@ export class CreateVenueDto {
   @IsString()
   @MaxLength(500)
   description?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  images?: string[];
 }
 
 export class UpdateVenueDto {
@@ -30,4 +35,9 @@ export class UpdateVenueDto {
   @IsString()
   @MaxLength(500)
   description?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  images?: string[];
 }

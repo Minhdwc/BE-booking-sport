@@ -120,7 +120,7 @@ export class PaymentsService {
   async create(createPaymentDto: CreatePaymentDto, user: JwtPayloadReturn) {
     const booking = await this.prisma.booking.findUnique({
       where: { id: createPaymentDto.bookingId },
-      include: { field: { select: { venueId: true } } },
+      include: { field: { select: { venueId: true, price: true } } },
     });
 
     if (!booking) {
@@ -144,8 +144,15 @@ export class PaymentsService {
       }
     }
 
+    const status = user.role === 'user' ? 'pending' : (createPaymentDto.status ?? 'pending');
+
     return this.prisma.payment.create({
-      data: createPaymentDto,
+      data: {
+        bookingId: createPaymentDto.bookingId,
+        amount: booking.field.price,
+        method: createPaymentDto.method,
+        status,
+      },
       include: {
         booking: {
           include: {

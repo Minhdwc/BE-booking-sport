@@ -30,6 +30,7 @@ model Field {
   description String?
   price       Int
   status      String    @default("active") // active, inactive
+  images      String[]  @default([])
   sportId     String
   venueId     String
   createdAt   DateTime  @default(now()) @map("created_at")
@@ -107,6 +108,7 @@ model User {
   phone         String         @unique()
   password      String
   role          String         @default("user") // user, admin, staff
+  avatarUrl     String?        @map("avatar_url")
   venueId       String?
   isActive      Boolean        @default(true)
   createdAt     DateTime       @default(now()) @map("created_at")
@@ -124,6 +126,7 @@ model Venue {
   name        String
   location    String
   description String?
+  images      String[] @default([])
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
   fields      Field[]
