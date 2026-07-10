@@ -8,9 +8,13 @@ import {
   WebSocketServer,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
+import { JwtProvider } from '@/utils/jwt.util';
 
 @WebSocketGateway({
-  cors: { origin: '*' },
+  cors: {
+    origin: ['http://localhost:3000'],
+    credentials: true,
+  },
   namespace: '/',
 })
 export class SocketGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
@@ -24,13 +28,34 @@ export class SocketGateway implements OnGatewayInit, OnGatewayConnection, OnGate
   }
 
   handleConnection(client: Socket) {
-    const userId = client.handshake.query.userId as string;
-    if (userId) {
-      client.join(`user:${userId}`);
-      this.logger.log(`Client connected: ${client.id} | userId: ${userId}`);
-    } else {
-      this.logger.log(`Client connected: ${client.id} (unauthenticated)`);
+    const authToken = client.handshake.auth?.token;
+    const queryToken = client.handshake.query?.token;
+    const authorization = client.handshake.headers?.authorization;
+
+    const token =
+      (typeof authToken === 'string' && authToken.trim() ? authToken : undefined) ||
+      (typeof queryToken === 'string' && queryToken.trim() ? queryToken : undefined) ||
+      (typeof authorization === 'string' && authorization.startsWith('Bearer ')
+        ? authorization.slice(7).trim()
+        : undefined);
+
+    if (!token) {
+      this.logger.warn(`Client ${client.id} rejected: missing token`);
+      client.disconnect(true);
+      return;
     }
+
+    const payload = JwtProvider.verifyToken(token, process.env.ACCESS_TOKEN_SECRET!);
+    if (!payload) {
+      this.logger.warn(`Client ${client.id} rejected: invalid token`);
+      client.disconnect(true);
+      return;
+    }
+
+    client.data.userId = payload.id;
+    client.data.userRole = payload.role;
+    client.join(`user:${payload.id}`);
+    this.logger.log(`Client connected: ${client.id} | userId: ${payload.id}`);
   }
 
   handleDisconnect(client: Socket) {
@@ -39,6 +64,10 @@ export class SocketGateway implements OnGatewayInit, OnGatewayConnection, OnGate
 
   @SubscribeMessage('join-venue')
   handleJoinVenue(client: Socket, venueId: string) {
+    if (!client.data.userId) {
+      return;
+    }
+
     client.join(`venue:${venueId}`);
     this.logger.log(`Client ${client.id} joined venue room: ${venueId}`);
   }

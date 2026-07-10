@@ -128,12 +128,10 @@ export class BookingsService {
   }
 
   async create(createBookingDto: CreateBookingDto, user: JwtPayloadReturn) {
-    // user thường chỉ được đặt cho chính mình
     if (user.role === 'user' && createBookingDto.userId !== user.id) {
       throw new ForbiddenException('Bạn chỉ được đặt lịch cho chính mình');
     }
 
-    // staff chỉ được tạo booking cho sân của mình
     if (user.role === 'staff' || user.role === 'super_staff') {
       const currentUser = await this.prisma.user.findUnique({
         where: { id: user.id },
@@ -150,20 +148,38 @@ export class BookingsService {
       });
 
       if (!field || field.venueId !== currentUser.venueId) {
-        throw new ForbiddenException('Bạn chỉ được tạo booking cho sân của mình');
+        throw new ForbiddenException('Bạn chỉ được thao tác booking cho sân của mình');
       }
     }
 
-    await this.ensureRelations(
-      createBookingDto.userId,
-      createBookingDto.fieldId,
-      createBookingDto.timeslotId,
-    );
+    const bookingUser = await this.prisma.user.findUnique({
+      where: { id: createBookingDto.userId },
+    });
+    if (!bookingUser) {
+      throw new NotFoundException('User không tồn tại');
+    }
+
+    const bookingField = await this.prisma.field.findUnique({
+      where: { id: createBookingDto.fieldId },
+    });
+    if (!bookingField) {
+      throw new NotFoundException('Field không tồn tại');
+    }
+
+    const bookingTimeslot = await this.prisma.timeslot.findUnique({
+      where: { id: createBookingDto.timeslotId },
+    });
+    if (!bookingTimeslot) {
+      throw new NotFoundException('Timeslot không tồn tại');
+    }
+
+    const status = user.role === 'user' ? 'pending' : (createBookingDto.status ?? 'pending');
 
     try {
       const booking = await this.prisma.booking.create({
         data: {
           ...createBookingDto,
+          status,
           date: new Date(createBookingDto.date),
         },
         include: {
@@ -182,7 +198,7 @@ export class BookingsService {
 
       return booking;
     } catch (error) {
-      this.handleBookingError(error);
+      throw error;
     }
   }
 
@@ -190,18 +206,99 @@ export class BookingsService {
     const currentBooking = await this.findOne(id, user);
     const oldStatus = currentBooking.status;
 
-    await this.ensureRelations(
-      updateBookingDto.userId,
-      updateBookingDto.fieldId,
-      updateBookingDto.timeslotId,
-    );
+    if (user.role === 'user') {
+      if (updateBookingDto.userId && updateBookingDto.userId !== currentBooking.userId) {
+        throw new ForbiddenException('Bạn không được đổi chủ booking');
+      }
+
+      if (updateBookingDto.fieldId && updateBookingDto.fieldId !== currentBooking.fieldId) {
+        throw new ForbiddenException('Bạn không được đổi sân');
+      }
+
+      if (
+        updateBookingDto.timeslotId &&
+        updateBookingDto.timeslotId !== currentBooking.timeslotId
+      ) {
+        throw new ForbiddenException('Bạn không được đổi khung giờ');
+      }
+
+      if (updateBookingDto.date) {
+        throw new ForbiddenException('Bạn không được đổi ngày đặt sân');
+      }
+
+      if (updateBookingDto.status && updateBookingDto.status !== 'cancelled') {
+        throw new ForbiddenException('Bạn chỉ được hủy booking của mình');
+      }
+    }
+
+    const targetUserId = updateBookingDto.userId || currentBooking.userId;
+    const targetFieldId = updateBookingDto.fieldId || currentBooking.fieldId;
+
+    if (user.role === 'user' && targetUserId !== user.id) {
+      throw new ForbiddenException('Bạn chỉ được đặt lịch cho chính mình');
+    }
+
+    if (user.role === 'staff' || user.role === 'super_staff') {
+      const currentUser = await this.prisma.user.findUnique({
+        where: { id: user.id },
+        select: { venueId: true },
+      });
+
+      if (!currentUser?.venueId) {
+        throw new ForbiddenException('Tài khoản chưa được gán sân');
+      }
+
+      const field = await this.prisma.field.findUnique({
+        where: { id: targetFieldId },
+        select: { venueId: true },
+      });
+
+      if (!field || field.venueId !== currentUser.venueId) {
+        throw new ForbiddenException('Bạn chỉ được thao tác booking cho sân của mình');
+      }
+    }
+
+    if (updateBookingDto.userId) {
+      const bookingUser = await this.prisma.user.findUnique({
+        where: { id: updateBookingDto.userId },
+      });
+      if (!bookingUser) {
+        throw new NotFoundException('User không tồn tại');
+      }
+    }
+
+    if (updateBookingDto.fieldId) {
+      const bookingField = await this.prisma.field.findUnique({
+        where: { id: updateBookingDto.fieldId },
+      });
+      if (!bookingField) {
+        throw new NotFoundException('Field không tồn tại');
+      }
+    }
+
+    if (updateBookingDto.timeslotId) {
+      const bookingTimeslot = await this.prisma.timeslot.findUnique({
+        where: { id: updateBookingDto.timeslotId },
+      });
+      if (!bookingTimeslot) {
+        throw new NotFoundException('Timeslot không tồn tại');
+      }
+    }
+
+    const data: UpdateBookingDto = { ...updateBookingDto };
+    if (user.role === 'user') {
+      delete data.userId;
+      delete data.fieldId;
+      delete data.timeslotId;
+      delete data.date;
+    }
 
     try {
       const booking = await this.prisma.booking.update({
         where: { id },
         data: {
-          ...updateBookingDto,
-          ...(updateBookingDto.date && { date: new Date(updateBookingDto.date) }),
+          ...data,
+          ...(data.date && { date: new Date(data.date) }),
         },
         include: {
           user: {
@@ -216,13 +313,17 @@ export class BookingsService {
       });
 
       // báo cho user khi trạng thái booking thay đổi
-      if (updateBookingDto.status && updateBookingDto.status !== oldStatus) {
+      if (data.status && data.status !== oldStatus) {
         await this.notifyStatusChanged(booking, oldStatus);
       }
 
       return booking;
     } catch (error) {
-      this.handleBookingError(error);
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        throw new ConflictException('Khung giờ này đã được đặt cho sân trong ngày đã chọn');
+      }
+
+      throw error;
     }
   }
 
@@ -282,36 +383,5 @@ export class BookingsService {
         date: dateStr,
       });
     }
-  }
-
-  private async ensureRelations(userId?: string, fieldId?: string, timeslotId?: string) {
-    if (userId) {
-      const user = await this.prisma.user.findUnique({ where: { id: userId } });
-      if (!user) {
-        throw new NotFoundException('User không tồn tại');
-      }
-    }
-
-    if (fieldId) {
-      const field = await this.prisma.field.findUnique({ where: { id: fieldId } });
-      if (!field) {
-        throw new NotFoundException('Field không tồn tại');
-      }
-    }
-
-    if (timeslotId) {
-      const timeslot = await this.prisma.timeslot.findUnique({ where: { id: timeslotId } });
-      if (!timeslot) {
-        throw new NotFoundException('Timeslot không tồn tại');
-      }
-    }
-  }
-
-  private handleBookingError(error: unknown): never {
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-      throw new ConflictException('Khung giờ này đã được đặt cho sân trong ngày đã chọn');
-    }
-
-    throw error;
   }
 }

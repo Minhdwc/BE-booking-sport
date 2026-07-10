@@ -36,9 +36,6 @@ export class RegisterDto {
   @IsNotEmpty()
   email: string;
 
-  @IsString()
-  role: string;
-
   @IsPhoneNumber('VN')
   phone: string;
 

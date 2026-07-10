@@ -17,6 +17,7 @@ import { PaymentsModule } from './modules/payments/payments.module';
 import { ReviewsModule } from './modules/reviews/reviews.module';
 import { SportsModule } from './modules/sports/sports.module';
 import { TimeslotsModule } from './modules/timeslots/timeslots.module';
+import { UploadsModule } from './modules/uploads/uploads.module';
 import { UsersModule } from './modules/users/users.module';
 import { VenuesModule } from './modules/venues/venues.module';
 
@@ -44,6 +45,7 @@ import { VenuesModule } from './modules/venues/venues.module';
     PaymentsModule,
     BookingsModule,
     NotificationsModule,
+    UploadsModule,
   ],
 })
 export class AppModule {}

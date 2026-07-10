@@ -1,11 +1,26 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { Response } from 'express';
 import { PrismaService } from '@/database/prisma.service';
+import {
+  PaymentGatewayService,
+  VnpayReturnParams,
+} from '@/infrastructure/payment/payment-gateway.service';
+import { QueueService } from '@/infrastructure/queue/queue.service';
 import { JwtPayloadReturn } from '@/utils/jwt.util';
 import { CreatePaymentDto, UpdatePaymentDto } from './payments.dto';
 
 @Injectable()
 export class PaymentsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly paymentGateway: PaymentGatewayService,
+    private readonly queueService: QueueService,
+  ) {}
 
   async findAll(user: JwtPayloadReturn) {
     // admin xem tất cả thanh toán
@@ -81,26 +96,22 @@ export class PaymentsService {
     if (!payment) {
       throw new NotFoundException('Payment không tồn tại');
     }
-    if (user.role === 'admin') {
-      return;
-    }
 
-    if (user.role === 'staff' || user.role === 'super_staff') {
-      const currentUser = await this.prisma.user.findUnique({
-        where: { id: user.id },
-        select: { venueId: true },
-      });
-      if (!currentUser?.venueId) {
-        throw new ForbiddenException('Tài khoản chưa được gán sân');
+    if (user.role !== 'admin') {
+      if (user.role === 'staff' || user.role === 'super_staff') {
+        const currentUser = await this.prisma.user.findUnique({
+          where: { id: user.id },
+          select: { venueId: true },
+        });
+        if (!currentUser?.venueId) {
+          throw new ForbiddenException('Tài khoản chưa được gán sân');
+        }
+        if (payment.booking.field.venueId !== currentUser.venueId) {
+          throw new ForbiddenException('Bạn chỉ được xem thanh toán của sân mình');
+        }
+      } else if (payment.booking.userId !== user.id) {
+        throw new ForbiddenException('Bạn chỉ được xem thanh toán của mình');
       }
-      if (payment.booking.field.venueId !== currentUser.venueId) {
-        throw new ForbiddenException('Bạn chỉ được xem thanh toán của sân mình');
-      }
-      return;
-    }
-
-    if (payment.booking.userId !== user.id) {
-      throw new ForbiddenException('Bạn chỉ được xem thanh toán của mình');
     }
 
     return payment;
@@ -115,26 +126,22 @@ export class PaymentsService {
     if (!booking) {
       throw new NotFoundException('Booking không tồn tại');
     }
-    if (user.role === 'admin') {
-      return;
-    }
 
-    if (user.role === 'staff' || user.role === 'super_staff') {
-      const currentUser = await this.prisma.user.findUnique({
-        where: { id: user.id },
-        select: { venueId: true },
-      });
-      if (!currentUser?.venueId) {
-        throw new ForbiddenException('Tài khoản chưa được gán sân');
+    if (user.role !== 'admin') {
+      if (user.role === 'staff' || user.role === 'super_staff') {
+        const currentUser = await this.prisma.user.findUnique({
+          where: { id: user.id },
+          select: { venueId: true },
+        });
+        if (!currentUser?.venueId) {
+          throw new ForbiddenException('Tài khoản chưa được gán sân');
+        }
+        if (booking.field.venueId !== currentUser.venueId) {
+          throw new ForbiddenException('Bạn chỉ được tạo thanh toán cho sân mình');
+        }
+      } else if (booking.userId !== user.id) {
+        throw new ForbiddenException('Bạn chỉ được tạo thanh toán của mình');
       }
-      if (booking.field.venueId !== currentUser.venueId) {
-        throw new ForbiddenException('Bạn chỉ được xem thanh toán của sân mình');
-      }
-      return;
-    }
-
-    if (booking.userId !== user.id) {
-      throw new ForbiddenException('Bạn chỉ được xem thanh toán của mình');
     }
 
     return this.prisma.payment.create({
@@ -182,5 +189,85 @@ export class PaymentsService {
     await this.findOne(id, user);
 
     return this.prisma.payment.delete({ where: { id } });
+  }
+
+  async createVnpayUrl(paymentId: string, user: JwtPayloadReturn, ipAddr: string) {
+    const payment = await this.findOne(paymentId, user);
+
+    if (payment.status === 'paid') {
+      throw new BadRequestException('Thanh toán đã được hoàn tất');
+    }
+
+    await this.prisma.payment.update({
+      where: { id: paymentId },
+      data: { method: 'vnpay' },
+    });
+
+    const paymentUrl = this.paymentGateway.createPaymentUrl({
+      amount: payment.amount,
+      bookingId: payment.id,
+      orderInfo: `Thanh toan dat san ${payment.bookingId.slice(0, 8)}`,
+      ipAddr,
+    });
+
+    return { paymentUrl };
+  }
+
+  async handleVnpayReturn(query: Record<string, string>, res: Response) {
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    const vnpayQuery = query as VnpayReturnParams;
+    const { isValid, isSuccess } = this.paymentGateway.verifyReturnUrl(vnpayQuery);
+
+    if (!isValid) {
+      return res.redirect(`${frontendUrl}/payments?status=invalid`);
+    }
+
+    const paymentId = this.paymentGateway.getTransactionRef(vnpayQuery);
+    const payment = await this.prisma.payment.findUnique({
+      where: { id: paymentId },
+      include: {
+        booking: {
+          include: {
+            user: { select: { id: true, name: true, email: true } },
+          },
+        },
+      },
+    });
+
+    if (!payment) {
+      return res.redirect(`${frontendUrl}/payments?status=not_found`);
+    }
+
+    const returnedAmount = this.paymentGateway.getAmount(vnpayQuery);
+    if (returnedAmount !== payment.amount) {
+      await this.prisma.payment.update({
+        where: { id: paymentId },
+        data: { status: 'failed' },
+      });
+      return res.redirect(`${frontendUrl}/payments?status=amount_mismatch`);
+    }
+
+    if (isSuccess) {
+      await this.prisma.payment.update({
+        where: { id: paymentId },
+        data: { status: 'paid' },
+      });
+      await this.prisma.booking.update({
+        where: { id: payment.bookingId },
+        data: { status: 'confirmed' },
+      });
+      await this.queueService.sendPaymentConfirmationEmail(payment.booking.user.email, {
+        name: payment.booking.user.name,
+        amount: payment.amount,
+        bookingId: payment.bookingId,
+      });
+      return res.redirect(`${frontendUrl}/payments?status=success&paymentId=${paymentId}`);
+    }
+
+    await this.prisma.payment.update({
+      where: { id: paymentId },
+      data: { status: 'failed' },
+    });
+    return res.redirect(`${frontendUrl}/payments?status=failed`);
   }
 }

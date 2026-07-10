@@ -38,7 +38,7 @@ export class PaymentGatewayService {
     );
     this.returnUrl = this.config.get(
       'VNPAY_RETURN_URL',
-      'http://localhost:3001/payments/vnpay-return',
+      'http://localhost:3001/api/v1/payments/vnpay-return',
     );
   }
 

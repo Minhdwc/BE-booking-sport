@@ -53,7 +53,7 @@ export class AuthService {
   }
 
   async register(registerDto: RegisterDto) {
-    const { name, username, email, phone, role, password: rawPassword } = registerDto;
+    const { name, username, email, phone, password: rawPassword } = registerDto;
 
     const existingEmail = await this.prisma.user.findUnique({ where: { email } });
     if (existingEmail) {
@@ -68,7 +68,7 @@ export class AuthService {
     const hashedPassword = await bcrypt.hash(rawPassword, 10);
 
     const user = await this.prisma.user.create({
-      data: { name, username, email, phone, role, password: hashedPassword },
+      data: { name, username, email, phone, role: 'user', password: hashedPassword },
     });
 
     await this.queueService.sendWelcomeEmail(user.email, user.name);

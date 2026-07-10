@@ -1,4 +1,23 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: fieldops-postgres
+    restart: unless-stopped
+    ports:
+      - '${POSTGRES_PORT:-5432}:5432'
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-Minhduc}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-123456}
+      POSTGRES_DB: ${POSTGRES_DB:-booking-sports-fields}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-Minhduc} -d ${POSTGRES_DB:-booking-sports-fields}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
   redis:
     image: redis:7-alpine
     container_name: fieldops-redis
@@ -15,5 +34,26 @@ services:
       retries: 5
       start_period: 5s
 
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: fieldops-api
+    restart: unless-stopped
+    ports:
+      - '${PORT:-3001}:3001'
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-Minhduc}:${POSTGRES_PASSWORD:-123456}@postgres:5432/${POSTGRES_DB:-booking-sports-fields}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
 volumes:
+  postgres_data:
   redis_data:
