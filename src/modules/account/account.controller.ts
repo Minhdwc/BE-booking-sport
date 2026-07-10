@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Patch } from '@nestjs/common';
+import { Body, Controller, Get, Patch, UnauthorizedException } from '@nestjs/common';
 import { CurrentUser } from '@/common/decorators/current-user.decorator';
 import { JwtPayloadReturn } from '@/utils/jwt.util';
 import { AccountService } from './account.service';
@@ -10,6 +10,9 @@ export class AccountController {
 
   @Get('me')
   getMe(@CurrentUser() user: JwtPayloadReturn) {
+    if (!user.id) {
+      throw new UnauthorizedException('Token không tồn tại hoặc không hợp lệ');
+    }
     return this.accountService.getMe(user.id);
   }
 

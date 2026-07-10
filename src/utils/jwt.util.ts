@@ -4,7 +4,6 @@ export interface JwtPayloadReturn {
   id: string;
   email: string;
   role: string;
-  venueId?: string | null;
 }
 
 const generateToken = (payload: JwtPayload, secretSignature: string, tokenLife: string): string => {

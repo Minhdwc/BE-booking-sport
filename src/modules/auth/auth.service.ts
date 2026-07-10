@@ -33,7 +33,6 @@ export class AuthService {
       id: user.id,
       email: user.email,
       role: user.role,
-      venueId: user.venueId,
     };
 
     const accessToken = JwtProvider.generateToken(
@@ -78,7 +77,6 @@ export class AuthService {
       id: user.id,
       email: user.email,
       role: user.role,
-      venueId: user.venueId,
     };
 
     const accessToken = JwtProvider.generateToken(
@@ -98,8 +96,8 @@ export class AuthService {
     return { user: userWithoutPassword, accessToken, refreshToken };
   }
 
-  refresh(refreshToken: string | undefined) {
-    if (!refreshToken) {
+  refresh(refreshToken: string) {
+    if (!refreshToken?.trim()) {
       throw new UnauthorizedException('Refresh token không tồn tại');
     }
 
@@ -108,17 +106,24 @@ export class AuthService {
       throw new UnauthorizedException('Refresh token không hợp lệ hoặc đã hết hạn');
     }
 
+    const tokenPayload = {
+      id: payload.id,
+      email: payload.email,
+      role: payload.role,
+    };
+
     const accessToken = JwtProvider.generateToken(
-      {
-        id: payload.id,
-        email: payload.email,
-        role: payload.role,
-        venueId: payload.venueId,
-      },
+      tokenPayload,
       process.env.ACCESS_TOKEN_SECRET!,
       process.env.ACCESS_TOKEN_LIFE!,
     );
 
-    return { accessToken };
+    const newRefreshToken = JwtProvider.generateToken(
+      tokenPayload,
+      process.env.REFRESH_TOKEN_SECRET!,
+      process.env.REFRESH_TOKEN_LIFE!,
+    );
+
+    return { accessToken, refreshToken: newRefreshToken };
   }
 }

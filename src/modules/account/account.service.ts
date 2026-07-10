@@ -13,9 +13,17 @@ export class AccountService {
   constructor(private readonly prisma: PrismaService) {}
 
   async getMe(userId: string) {
+    if (!userId) {
+      throw new UnauthorizedException('Token không tồn tại hoặc không hợp lệ');
+    }
+
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) {
-      throw new NotFoundException('Tài khoản không tồn tại');
+      throw new UnauthorizedException('Tài khoản không tồn tại hoặc không hợp lệ');
+    }
+
+    if (!user.isActive) {
+      throw new UnauthorizedException('Tài khoản đã bị khóa');
     }
 
     const { password, ...userWithoutPassword } = user;

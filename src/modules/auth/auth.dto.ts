@@ -1,7 +1,6 @@
 import {
   IsEmail,
   IsNotEmpty,
-  IsOptional,
   IsPhoneNumber,
   IsString,
   MaxLength,
@@ -48,4 +47,10 @@ export class RegisterDto {
   @MinLength(8)
   @MaxLength(32)
   password: string;
+}
+
+export class RefreshDto {
+  @IsString()
+  @IsNotEmpty()
+  refreshToken: string;
 }

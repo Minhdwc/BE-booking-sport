@@ -107,10 +107,6 @@ export class FieldsService {
   }
 
   private async getVenueIdOfStaff(user: JwtPayloadReturn): Promise<string> {
-    if (user.venueId) {
-      return user.venueId;
-    }
-
     const currentUser = await this.prisma.user.findUnique({
       where: { id: user.id },
       select: { venueId: true },
