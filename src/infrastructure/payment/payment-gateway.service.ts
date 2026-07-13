@@ -17,7 +17,8 @@ export interface VnpayReturnParams {
   vnp_ResponseCode: string;
   vnp_TransactionStatus: string;
   vnp_SecureHash: string;
-  [key: string]: string;
+  vnp_TransactionNo?: string;
+  [key: string]: string | undefined;
 }
 
 @Injectable()
@@ -73,7 +74,13 @@ export class PaymentGatewayService {
 
   verifyReturnUrl(query: VnpayReturnParams): { isValid: boolean; isSuccess: boolean } {
     const { vnp_SecureHash, ...params } = query;
-    const sortedParams = this.sortObject(params as Record<string, string>);
+    const cleaned: Record<string, string> = {};
+    for (const [key, value] of Object.entries(params)) {
+      if (value !== undefined && value !== null && key !== 'vnp_SecureHashType') {
+        cleaned[key] = String(value);
+      }
+    }
+    const sortedParams = this.sortObject(cleaned);
     const signData = new URLSearchParams(sortedParams).toString().replace(/\+/g, '%20');
     const expectedHash = this.createHmacSha512(this.hashSecret, signData);
 

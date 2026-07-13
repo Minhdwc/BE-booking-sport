@@ -1,4 +1,14 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { CurrentUser } from '@/common/decorators/current-user.decorator';
 import { Public } from '@/common/decorators/public.decorator';
 import { Roles } from '@/common/decorators/roles.decorator';
@@ -37,7 +47,16 @@ export class FieldsController {
   @UseGuards(RolesGuard)
   @Roles('admin', 'staff', 'super_staff')
   create(@Body() createFieldDto: CreateFieldDto, @CurrentUser() user: JwtPayloadReturn) {
-    return this.fieldsService.create(createFieldDto, user);
+    return this.fieldsService.create(
+      user,
+      createFieldDto.name,
+      createFieldDto.price,
+      createFieldDto.sportId,
+      createFieldDto.venueId,
+      createFieldDto.description,
+      createFieldDto.status,
+      createFieldDto.images,
+    );
   }
 
   @Patch(':id')
@@ -48,7 +67,15 @@ export class FieldsController {
     @Body() updateFieldDto: UpdateFieldDto,
     @CurrentUser() user: JwtPayloadReturn,
   ) {
-    return this.fieldsService.update(id, updateFieldDto, user);
+    return this.fieldsService.update(id, user, {
+      name: updateFieldDto.name,
+      description: updateFieldDto.description,
+      price: updateFieldDto.price,
+      status: updateFieldDto.status,
+      images: updateFieldDto.images,
+      sportId: updateFieldDto.sportId,
+      venueId: updateFieldDto.venueId,
+    });
   }
 
   @Delete(':id')

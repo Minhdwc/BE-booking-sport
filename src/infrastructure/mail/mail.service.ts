@@ -27,6 +27,17 @@ export interface PaymentConfirmationData {
   bookingId: string;
 }
 
+export interface NewBookingOwnerData {
+  ownerName: string;
+  customerName: string;
+  fieldName: string;
+  venueName: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  bookingId: string;
+}
+
 const renderBookingConfirmationEmail = (data: BookingConfirmationData): string => {
   return `
 <!DOCTYPE html>
@@ -133,6 +144,31 @@ const renderWelcomeEmail = (name: string): string => {
 </html>`;
 };
 
+const renderNewBookingOwnerEmail = (data: NewBookingOwnerData): string => {
+  return `
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8" /></head>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,sans-serif;">
+  <div style="max-width:600px;margin:32px auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+    <div style="background:#0f766e;padding:32px;text-align:center;">
+      <h1 style="color:#fff;margin:0;font-size:24px;">Booking mới tại sân của bạn</h1>
+    </div>
+    <div style="padding:32px;">
+      <p style="color:#374151;font-size:16px;">Xin chào <strong>${data.ownerName}</strong>,</p>
+      <p style="color:#374151;">Có booking mới cần theo dõi:</p>
+      <div style="background:#f9fafb;border-radius:8px;padding:20px;margin:20px 0;">
+        <p style="margin:0;color:#6b7280;font-size:14px;">Khách: <strong style="color:#111827;">${data.customerName}</strong></p>
+        <p style="margin:8px 0 0;color:#6b7280;font-size:14px;">Sân: <strong style="color:#111827;">${data.fieldName}</strong> — ${data.venueName}</p>
+        <p style="margin:8px 0 0;color:#6b7280;font-size:14px;">Thời gian: <strong style="color:#111827;">${data.date} ${data.startTime} - ${data.endTime}</strong></p>
+        <p style="margin:8px 0 0;color:#6b7280;font-size:14px;">Mã: <strong style="color:#111827;">#${data.bookingId.slice(0, 8).toUpperCase()}</strong></p>
+      </div>
+    </div>
+  </div>
+</body>
+</html>`;
+};
+
 const renderPaymentConfirmationEmail = (data: PaymentConfirmationData): string => {
   return `
 <!DOCTYPE html>
@@ -233,6 +269,20 @@ export class MailService {
       this.logger.log(`Payment confirmation sent to ${to}`);
     } catch (err) {
       this.logger.error(`Failed to send payment confirmation to ${to}`, err);
+    }
+  }
+
+  async sendNewBookingOwner(to: string, data: NewBookingOwnerData): Promise<void> {
+    try {
+      await this.transporter.sendMail({
+        from: this.fromAddress,
+        to,
+        subject: 'Booking mới tại sân của bạn - Minh Đức Booking Sport',
+        html: renderNewBookingOwnerEmail(data),
+      });
+      this.logger.log(`New booking owner email sent to ${to}`);
+    } catch (err) {
+      this.logger.error(`Failed to send new booking owner email to ${to}`, err);
     }
   }
 }

@@ -1,11 +1,6 @@
-import { IsDateString, IsIn, IsOptional, IsUUID } from 'class-validator';
-
-const BOOKING_STATUSES = ['pending', 'confirmed', 'cancelled', 'completed'];
+import { IsDateString, IsIn, IsUUID } from 'class-validator';
 
 export class CreateBookingDto {
-  @IsUUID()
-  userId: string;
-
   @IsUUID()
   fieldId: string;
 
@@ -14,30 +9,9 @@ export class CreateBookingDto {
 
   @IsDateString()
   date: string;
-
-  @IsOptional()
-  @IsIn(BOOKING_STATUSES)
-  status?: string;
 }
 
-export class UpdateBookingDto {
-  @IsOptional()
-  @IsUUID()
-  userId?: string;
-
-  @IsOptional()
-  @IsUUID()
-  fieldId?: string;
-
-  @IsOptional()
-  @IsUUID()
-  timeslotId?: string;
-
-  @IsOptional()
-  @IsDateString()
-  date?: string;
-
-  @IsOptional()
-  @IsIn(BOOKING_STATUSES)
-  status?: string;
+export class UpdateBookingStatusDto {
+  @IsIn(['confirmed', 'completed', 'cancelled'])
+  status: 'confirmed' | 'completed' | 'cancelled';
 }

@@ -1,101 +1,123 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { PrismaService } from '@/database/prisma.service';
 import { JwtPayloadReturn } from '@/utils/jwt.util';
-import { CreateVenueDto, UpdateVenueDto } from './venues.dto';
+import { DTOCreateVenue, DTOUpdateVenue } from './venues.dto';
+import { VenuesRepository } from './venues.repository';
 
 @Injectable()
 export class VenuesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly venuesRepository: VenuesRepository) {}
 
-  async findAll(
-    query: { search?: string; page?: string; limit?: string },
-    user?: JwtPayloadReturn,
-  ) {
-    const limit = Number(query.limit) || 10;
-    const page = Number(query.page) || 1;
+  async findAll(user?: JwtPayloadReturn, search?: string, pageParam?: string, limitParam?: string) {
+    const limit = Number(limitParam) || 10;
+    const page = Number(pageParam) || 1;
 
     const where: Prisma.VenueWhereInput = {};
 
-    // staff chỉ thấy venue mình được gán
     if (user && (user.role === 'staff' || user.role === 'super_staff')) {
-      where.users = { some: { id: user.id } };
+      where.venueOwners = { some: { userId: user.id } };
     }
 
-    if (query.search) {
+    if (search) {
       where.OR = [
-        { name: { contains: query.search, mode: 'insensitive' } },
-        { location: { contains: query.search, mode: 'insensitive' } },
-        { fields: { some: { name: { contains: query.search, mode: 'insensitive' } } } },
+        { name: { contains: search, mode: 'insensitive' } },
+        { location: { contains: search, mode: 'insensitive' } },
+        { fields: { some: { name: { contains: search, mode: 'insensitive' } } } },
       ];
     }
 
-    return this.prisma.venue.findMany({
+    return this.venuesRepository.findMany({
       where,
       skip: (page - 1) * limit,
       take: limit,
-      orderBy: { createdAt: 'desc' },
-      include: {
-        fields: {
-          where: { status: 'active' },
-          include: { sport: true },
-        },
-      },
     });
   }
 
   async findOne(id: string) {
-    const venue = await this.prisma.venue.findUnique({
-      where: { id },
-      include: {
-        fields: {
-          where: { status: 'active' },
-          include: { sport: true },
-        },
-      },
-    });
-
+    const venue = await this.venuesRepository.findById(id);
     if (!venue) {
       throw new NotFoundException('Venue không tồn tại');
     }
-
     return venue;
   }
 
-  create(createVenueDto: CreateVenueDto) {
-    return this.prisma.venue.create({ data: createVenueDto });
-  }
+  async create(payload: DTOCreateVenue) {
+    if (payload.ownerId) {
+      const owner = await this.venuesRepository.findUserById(payload.ownerId);
+      if (!owner) {
+        throw new NotFoundException('Tài khoản không tồn tại');
+      }
+    }
 
-  async update(id: string, updateVenueDto: UpdateVenueDto, user: JwtPayloadReturn) {
-    await this.checkCanManageVenue(id, user);
-
-    return this.prisma.venue.update({
-      where: { id },
-      data: updateVenueDto,
+    return this.venuesRepository.create({
+      name: payload.name,
+      location: payload.location,
+      description: payload.description,
+      images: payload.images,
+      ownerId: payload.ownerId,
     });
   }
 
-  async remove(id: string, user: JwtPayloadReturn) {
-    await this.checkCanManageVenue(id, user);
-    return this.prisma.venue.delete({ where: { id } });
+  async update(id: string, user: JwtPayloadReturn, data: DTOUpdateVenue) {
+    if (user.role === 'staff' || user.role === 'super_staff') {
+      const ownerships = await this.venuesRepository.findOwnedVenueIds(user.id);
+      if (!ownerships.some((o) => o.venueId === id)) {
+        throw new ForbiddenException('Bạn không có quyền quản lý sân vận động này');
+      }
+    } else if (user.role !== 'admin') {
+      throw new ForbiddenException('Bạn không có quyền quản lý sân vận động');
+    }
+
+    const existing = await this.venuesRepository.findByIdSimple(id);
+    if (!existing) {
+      throw new NotFoundException('Venue không tồn tại');
+    }
+
+    return this.venuesRepository.update(id, data);
   }
 
-  private async checkCanManageVenue(venueId: string, user: JwtPayloadReturn) {
-    if (user.role === 'admin') {
-      return;
-    }
-
+  async remove(id: string, user: JwtPayloadReturn) {
     if (user.role === 'staff' || user.role === 'super_staff') {
-      const venue = await this.prisma.venue.findFirst({
-        where: { id: venueId, users: { some: { id: user.id } } },
-      });
-
-      if (!venue) {
+      const ownerships = await this.venuesRepository.findOwnedVenueIds(user.id);
+      if (!ownerships.some((o) => o.venueId === id)) {
         throw new ForbiddenException('Bạn không có quyền quản lý venue này');
       }
-      return;
+    } else if (user.role !== 'admin') {
+      throw new ForbiddenException('Bạn không có quyền quản lý venue');
     }
 
-    throw new ForbiddenException('Bạn không có quyền quản lý venue');
+    const existing = await this.venuesRepository.findByIdSimple(id);
+    if (!existing) {
+      throw new NotFoundException('Venue không tồn tại');
+    }
+
+    return this.venuesRepository.delete(id);
+  }
+
+  async listOwners(venueId: string) {
+    await this.findOne(venueId);
+    return this.venuesRepository.listOwners(venueId);
+  }
+
+  async addOwner(venueId: string, userId: string) {
+    await this.findOne(venueId);
+
+    const user = await this.venuesRepository.findUserById(userId);
+    if (!user) {
+      throw new NotFoundException('User không tồn tại');
+    }
+
+    return this.venuesRepository.upsertOwner(venueId, userId);
+  }
+
+  async removeOwner(venueId: string, userId: string) {
+    await this.findOne(venueId);
+
+    const ownership = await this.venuesRepository.findOwner(venueId, userId);
+    if (!ownership) {
+      throw new NotFoundException('VenueOwner không tồn tại');
+    }
+
+    return this.venuesRepository.deleteOwner(ownership.id);
   }
 }

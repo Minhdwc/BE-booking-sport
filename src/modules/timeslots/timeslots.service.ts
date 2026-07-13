@@ -1,50 +1,37 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { PrismaService } from '@/database/prisma.service';
-import { CreateTimeslotDto, UpdateTimeslotDto } from './timeslots.dto';
+import { TimeslotsRepository } from './timeslots.repository';
 
 @Injectable()
 export class TimeslotsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly timeslotsRepository: TimeslotsRepository) {}
 
   findAll() {
-    return this.prisma.timeslot.findMany({ orderBy: { startTime: 'asc' } });
+    return this.timeslotsRepository.findAll();
   }
 
   async findOne(id: string) {
-    const timeslot = await this.prisma.timeslot.findUnique({ where: { id } });
+    const timeslot = await this.timeslotsRepository.findById(id);
     if (!timeslot) {
       throw new NotFoundException('Timeslot không tồn tại');
     }
     return timeslot;
   }
 
-  create(createTimeslotDto: CreateTimeslotDto) {
-    return this.prisma.timeslot.create({
-      data: {
-        startTime: new Date(createTimeslotDto.startTime),
-        endTime: new Date(createTimeslotDto.endTime),
-      },
-    });
+  create(startTime: string, endTime: string) {
+    return this.timeslotsRepository.create(new Date(startTime), new Date(endTime));
   }
 
-  async update(id: string, updateTimeslotDto: UpdateTimeslotDto) {
+  async update(id: string, startTime?: string, endTime?: string) {
     await this.findOne(id);
 
-    return this.prisma.timeslot.update({
-      where: { id },
-      data: {
-        ...(updateTimeslotDto.startTime && {
-          startTime: new Date(updateTimeslotDto.startTime),
-        }),
-        ...(updateTimeslotDto.endTime && {
-          endTime: new Date(updateTimeslotDto.endTime),
-        }),
-      },
+    return this.timeslotsRepository.update(id, {
+      ...(startTime && { startTime: new Date(startTime) }),
+      ...(endTime && { endTime: new Date(endTime) }),
     });
   }
 
   async remove(id: string) {
     await this.findOne(id);
-    return this.prisma.timeslot.delete({ where: { id } });
+    return this.timeslotsRepository.delete(id);
   }
 }

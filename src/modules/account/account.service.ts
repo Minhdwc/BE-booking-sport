@@ -5,19 +5,18 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
-import { PrismaService } from '@/database/prisma.service';
-import { ChangePasswordDto, UpdateProfileDto } from './account.dto';
+import { AccountRepository } from './account.repository';
 
 @Injectable()
 export class AccountService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly accountRepository: AccountRepository) {}
 
   async getMe(userId: string) {
     if (!userId) {
       throw new UnauthorizedException('Token không tồn tại hoặc không hợp lệ');
     }
 
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    const user = await this.accountRepository.findById(userId);
     if (!user) {
       throw new UnauthorizedException('Tài khoản không tồn tại hoặc không hợp lệ');
     }
@@ -33,20 +32,23 @@ export class AccountService {
     };
   }
 
-  async updateProfile(userId: string, updateProfileDto: UpdateProfileDto) {
-    if (updateProfileDto.phone) {
-      const existingPhone = await this.prisma.user.findUnique({
-        where: { phone: updateProfileDto.phone },
-      });
+  async updateProfile(
+    userId: string,
+    data: {
+      name?: string;
+      username?: string;
+      phone?: string;
+      avatarUrl?: string;
+    },
+  ) {
+    if (data.phone) {
+      const existingPhone = await this.accountRepository.findByPhone(data.phone);
       if (existingPhone && existingPhone.id !== userId) {
         throw new ConflictException('Số điện thoại đã tồn tại');
       }
     }
 
-    const user = await this.prisma.user.update({
-      where: { id: userId },
-      data: updateProfileDto,
-    });
+    const user = await this.accountRepository.update(userId, data);
 
     const { password, ...userWithoutPassword } = user;
 
@@ -101,23 +103,20 @@ export class AccountService {
     };
   }
 
-  async changePassword(userId: string, changePasswordDto: ChangePasswordDto) {
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+  async changePassword(userId: string, currentPassword: string, newPassword: string) {
+    const user = await this.accountRepository.findById(userId);
     if (!user) {
       throw new NotFoundException('Tài khoản không tồn tại');
     }
 
-    const isValidPassword = await bcrypt.compare(changePasswordDto.currentPassword, user.password);
+    const isValidPassword = await bcrypt.compare(currentPassword, user.password);
     if (!isValidPassword) {
       throw new UnauthorizedException('Mật khẩu hiện tại không đúng');
     }
 
-    const hashedPassword = await bcrypt.hash(changePasswordDto.newPassword, 10);
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
 
-    await this.prisma.user.update({
-      where: { id: userId },
-      data: { password: hashedPassword },
-    });
+    await this.accountRepository.update(userId, { password: hashedPassword });
 
     return { success: true };
   }

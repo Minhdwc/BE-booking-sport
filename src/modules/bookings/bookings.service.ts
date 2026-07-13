@@ -1,100 +1,44 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
-import { PrismaService } from '@/database/prisma.service';
 import { QueueService } from '@/infrastructure/queue/queue.service';
 import { SocketGateway } from '@/infrastructure/socket/socket.gateway';
 import { JwtPayloadReturn } from '@/utils/jwt.util';
-import { CreateBookingDto, UpdateBookingDto } from './bookings.dto';
+import { BookingsRepository } from './bookings.repository';
 
 @Injectable()
 export class BookingsService {
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly bookingsRepository: BookingsRepository,
     private readonly queueService: QueueService,
     private readonly socketGateway: SocketGateway,
   ) {}
 
   async findAll(user: JwtPayloadReturn) {
-    // admin xem hết
     if (user.role === 'admin') {
-      return this.prisma.booking.findMany({
-        include: {
-          user: {
-            select: { id: true, name: true, email: true, phone: true },
-          },
-          field: {
-            include: { sport: true, venue: true },
-          },
-          timeslot: true,
-          payments: true,
-        },
-        orderBy: { createdAt: 'desc' },
-      });
+      return this.bookingsRepository.findAll();
     }
 
-    // staff / super_staff chỉ xem booking của sân mình
     if (user.role === 'staff' || user.role === 'super_staff') {
-      const currentUser = await this.prisma.user.findUnique({
-        where: { id: user.id },
-        select: { venueId: true },
-      });
-
-      if (!currentUser?.venueId) {
+      const ownedVenueIds = await this.bookingsRepository.findOwnedVenueIds(user.id);
+      if (ownedVenueIds.length === 0) {
         throw new ForbiddenException('Tài khoản chưa được gán sân');
       }
 
-      return this.prisma.booking.findMany({
-        where: { field: { venueId: currentUser.venueId } },
-        include: {
-          user: {
-            select: { id: true, name: true, email: true, phone: true },
-          },
-          field: {
-            include: { sport: true, venue: true },
-          },
-          timeslot: true,
-          payments: true,
-        },
-        orderBy: { createdAt: 'desc' },
+      return this.bookingsRepository.findAll({
+        field: { venueId: { in: ownedVenueIds } },
       });
     }
 
-    // user thường chỉ xem booking của mình
-    return this.prisma.booking.findMany({
-      where: { userId: user.id },
-      include: {
-        user: {
-          select: { id: true, name: true, email: true, phone: true },
-        },
-        field: {
-          include: { sport: true, venue: true },
-        },
-        timeslot: true,
-        payments: true,
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+    return this.bookingsRepository.findAll({ userId: user.id });
   }
 
   async findOne(id: string, user: JwtPayloadReturn) {
-    const booking = await this.prisma.booking.findUnique({
-      where: { id },
-      include: {
-        user: {
-          select: { id: true, name: true, email: true, phone: true },
-        },
-        field: {
-          include: { sport: true, venue: true },
-        },
-        timeslot: true,
-        payments: true,
-      },
-    });
+    const booking = await this.bookingsRepository.findById(id);
 
     if (!booking) {
       throw new NotFoundException('Booking không tồn tại');
@@ -105,17 +49,9 @@ export class BookingsService {
     }
 
     if (user.role === 'staff' || user.role === 'super_staff') {
-      const currentUser = await this.prisma.user.findUnique({
-        where: { id: user.id },
-        select: { venueId: true },
-      });
-
-      if (!currentUser?.venueId) {
-        throw new ForbiddenException('Tài khoản chưa được gán sân');
-      }
-
-      if (booking.field.venueId !== currentUser.venueId) {
-        throw new ForbiddenException('Bạn chỉ được xem booking của sân mình');
+      const ownedVenueIds = await this.bookingsRepository.findOwnedVenueIds(user.id);
+      if (!ownedVenueIds.includes(booking.field.venueId)) {
+        throw new ForbiddenException('Bạn chỉ được xem booking thuộc sân của mình');
       }
       return booking;
     }
@@ -127,212 +63,51 @@ export class BookingsService {
     return booking;
   }
 
-  async create(createBookingDto: CreateBookingDto, user: JwtPayloadReturn) {
-    if (user.role === 'user' && createBookingDto.userId !== user.id) {
-      throw new ForbiddenException('Bạn chỉ được đặt lịch cho chính mình');
+  async create(user: JwtPayloadReturn, fieldId: string, timeslotId: string, date: string) {
+    const bookingDate = new Date(date);
+    if (Number.isNaN(bookingDate.getTime())) {
+      throw new BadRequestException('Ngày đặt sân không hợp lệ');
     }
 
-    if (user.role === 'staff' || user.role === 'super_staff') {
-      const currentUser = await this.prisma.user.findUnique({
-        where: { id: user.id },
-        select: { venueId: true },
-      });
-
-      if (!currentUser?.venueId) {
-        throw new ForbiddenException('Tài khoản chưa được gán sân');
-      }
-
-      const field = await this.prisma.field.findUnique({
-        where: { id: createBookingDto.fieldId },
-        select: { venueId: true },
-      });
-
-      if (!field || field.venueId !== currentUser.venueId) {
-        throw new ForbiddenException('Bạn chỉ được thao tác booking cho sân của mình');
-      }
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const bookingDay = new Date(bookingDate);
+    bookingDay.setHours(0, 0, 0, 0);
+    if (bookingDay < today) {
+      throw new BadRequestException('Ngày đặt sân phải lớn hơn hiện tại');
     }
 
-    const bookingUser = await this.prisma.user.findUnique({
-      where: { id: createBookingDto.userId },
-    });
-    if (!bookingUser) {
-      throw new NotFoundException('User không tồn tại');
-    }
-
-    const bookingField = await this.prisma.field.findUnique({
-      where: { id: createBookingDto.fieldId },
-    });
+    const bookingField = await this.bookingsRepository.findFieldById(fieldId);
     if (!bookingField) {
-      throw new NotFoundException('Field không tồn tại');
+      throw new NotFoundException('Sân không tồn tại');
+    }
+    if (bookingField.status !== 'active') {
+      throw new BadRequestException('Sân hiện không nhận đặt lịch');
     }
 
-    const bookingTimeslot = await this.prisma.timeslot.findUnique({
-      where: { id: createBookingDto.timeslotId },
-    });
+    const bookingTimeslot = await this.bookingsRepository.findTimeslotById(timeslotId);
     if (!bookingTimeslot) {
       throw new NotFoundException('Timeslot không tồn tại');
     }
 
-    const status = user.role === 'user' ? 'pending' : (createBookingDto.status ?? 'pending');
-
-    try {
-      const booking = await this.prisma.booking.create({
-        data: {
-          ...createBookingDto,
-          status,
-          date: new Date(createBookingDto.date),
-        },
-        include: {
-          user: {
-            select: { id: true, name: true, email: true, phone: true },
-          },
-          field: {
-            include: { sport: true, venue: true },
-          },
-          timeslot: true,
-          payments: true,
-        },
-      });
-
-      await this.notifyBookingCreated(booking);
-
-      return booking;
-    } catch (error) {
-      throw error;
-    }
-  }
-
-  async update(id: string, updateBookingDto: UpdateBookingDto, user: JwtPayloadReturn) {
-    const currentBooking = await this.findOne(id, user);
-    const oldStatus = currentBooking.status;
-
-    if (user.role === 'user') {
-      if (updateBookingDto.userId && updateBookingDto.userId !== currentBooking.userId) {
-        throw new ForbiddenException('Bạn không được đổi chủ booking');
-      }
-
-      if (updateBookingDto.fieldId && updateBookingDto.fieldId !== currentBooking.fieldId) {
-        throw new ForbiddenException('Bạn không được đổi sân');
-      }
-
-      if (
-        updateBookingDto.timeslotId &&
-        updateBookingDto.timeslotId !== currentBooking.timeslotId
-      ) {
-        throw new ForbiddenException('Bạn không được đổi khung giờ');
-      }
-
-      if (updateBookingDto.date) {
-        throw new ForbiddenException('Bạn không được đổi ngày đặt sân');
-      }
-
-      if (updateBookingDto.status && updateBookingDto.status !== 'cancelled') {
-        throw new ForbiddenException('Bạn chỉ được hủy booking của mình');
-      }
+    const slotTaken = await this.bookingsRepository.findActiveSlot(
+      fieldId,
+      timeslotId,
+      bookingDate,
+    );
+    if (slotTaken) {
+      throw new ConflictException('Khung giờ này đã được đặt');
     }
 
-    const targetUserId = updateBookingDto.userId || currentBooking.userId;
-    const targetFieldId = updateBookingDto.fieldId || currentBooking.fieldId;
+    const booking = await this.bookingsRepository.create({
+      userId: user.id,
+      fieldId,
+      timeslotId,
+      date: bookingDate,
+      status: 'pending',
+      slotLock: 'active',
+    });
 
-    if (user.role === 'user' && targetUserId !== user.id) {
-      throw new ForbiddenException('Bạn chỉ được đặt lịch cho chính mình');
-    }
-
-    if (user.role === 'staff' || user.role === 'super_staff') {
-      const currentUser = await this.prisma.user.findUnique({
-        where: { id: user.id },
-        select: { venueId: true },
-      });
-
-      if (!currentUser?.venueId) {
-        throw new ForbiddenException('Tài khoản chưa được gán sân');
-      }
-
-      const field = await this.prisma.field.findUnique({
-        where: { id: targetFieldId },
-        select: { venueId: true },
-      });
-
-      if (!field || field.venueId !== currentUser.venueId) {
-        throw new ForbiddenException('Bạn chỉ được thao tác booking cho sân của mình');
-      }
-    }
-
-    if (updateBookingDto.userId) {
-      const bookingUser = await this.prisma.user.findUnique({
-        where: { id: updateBookingDto.userId },
-      });
-      if (!bookingUser) {
-        throw new NotFoundException('User không tồn tại');
-      }
-    }
-
-    if (updateBookingDto.fieldId) {
-      const bookingField = await this.prisma.field.findUnique({
-        where: { id: updateBookingDto.fieldId },
-      });
-      if (!bookingField) {
-        throw new NotFoundException('Field không tồn tại');
-      }
-    }
-
-    if (updateBookingDto.timeslotId) {
-      const bookingTimeslot = await this.prisma.timeslot.findUnique({
-        where: { id: updateBookingDto.timeslotId },
-      });
-      if (!bookingTimeslot) {
-        throw new NotFoundException('Timeslot không tồn tại');
-      }
-    }
-
-    const data: UpdateBookingDto = { ...updateBookingDto };
-    if (user.role === 'user') {
-      delete data.userId;
-      delete data.fieldId;
-      delete data.timeslotId;
-      delete data.date;
-    }
-
-    try {
-      const booking = await this.prisma.booking.update({
-        where: { id },
-        data: {
-          ...data,
-          ...(data.date && { date: new Date(data.date) }),
-        },
-        include: {
-          user: {
-            select: { id: true, name: true, email: true, phone: true },
-          },
-          field: {
-            include: { sport: true, venue: true },
-          },
-          timeslot: true,
-          payments: true,
-        },
-      });
-
-      // báo cho user khi trạng thái booking thay đổi
-      if (data.status && data.status !== oldStatus) {
-        await this.notifyStatusChanged(booking, oldStatus);
-      }
-
-      return booking;
-    } catch (error) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-        throw new ConflictException('Khung giờ này đã được đặt cho sân trong ngày đã chọn');
-      }
-
-      throw error;
-    }
-  }
-
-  async remove(id: string, user: JwtPayloadReturn) {
-    await this.findOne(id, user);
-    return this.prisma.booking.delete({ where: { id } });
-  }
-
-  private async notifyBookingCreated(booking: any) {
     const dateStr = booking.date.toISOString().split('T')[0];
     const startTime = booking.timeslot.startTime.toISOString().substring(11, 16);
     const endTime = booking.timeslot.endTime.toISOString().substring(11, 16);
@@ -354,14 +129,82 @@ export class BookingsService {
       `Bạn đã đặt ${booking.field.name} tại ${booking.field.venue.name} ngày ${dateStr}`,
     );
 
+    await this.notifyVenueOwners(
+      booking.field.venueId,
+      'Booking mới',
+      `Có booking mới cho ${booking.field.name} ngày ${dateStr}`,
+    );
+
+    await this.emailVenueOwnersNewBooking(booking.field.venueId, {
+      fieldName: booking.field.name,
+      venueName: booking.field.venue.name,
+      date: dateStr,
+      startTime,
+      endTime,
+      customerName: booking.user.name,
+      bookingId: booking.id,
+    });
+
     this.socketGateway.sendBookingStatusUpdate(booking.userId, {
       bookingId: booking.id,
       status: booking.status,
       fieldName: booking.field.name,
     });
+
+    this.socketGateway.broadcastToVenue(booking.field.venueId, 'booking:updated', {
+      bookingId: booking.id,
+      status: booking.status,
+      fieldId: booking.fieldId,
+      fieldName: booking.field.name,
+      date: dateStr,
+    });
+
+    return booking;
   }
 
-  private async notifyStatusChanged(booking: any, oldStatus: string) {
+  async updateStatus(
+    id: string,
+    user: JwtPayloadReturn,
+    status: 'confirmed' | 'completed' | 'cancelled',
+  ) {
+    const currentBooking = await this.findOne(id, user);
+    const oldStatus = currentBooking.status;
+
+    if (status === 'cancelled') {
+      return this.cancel(id, user);
+    }
+
+    if (user.role !== 'admin' && user.role !== 'staff' && user.role !== 'super_staff') {
+      throw new ForbiddenException('Bạn không có quyền cập nhật trạng thái booking');
+    }
+
+    if (oldStatus === 'cancelled') {
+      throw new BadRequestException('Không thể cập nhật booking đã hủy');
+    }
+
+    if (oldStatus === status) {
+      return currentBooking;
+    }
+
+    if (status === 'confirmed' && oldStatus !== 'pending') {
+      throw new BadRequestException('Chỉ booking pending mới được confirm');
+    }
+
+    if (status === 'completed' && oldStatus !== 'confirmed') {
+      throw new BadRequestException('Chỉ booking confirmed mới được complete');
+    }
+
+    const booking = await this.bookingsRepository.updateStatus(id, status);
+
+    await this.bookingsRepository.createAuditLog({
+      actorId: user.id,
+      action: `booking.${status}`,
+      entityType: 'booking',
+      entityId: booking.id,
+      fromValue: oldStatus,
+      toValue: status,
+    });
+
     const dateStr = booking.date.toISOString().split('T')[0];
 
     await this.queueService.createNotification(
@@ -370,18 +213,137 @@ export class BookingsService {
       `Booking của bạn đã đổi từ ${oldStatus} sang ${booking.status}`,
     );
 
+    await this.notifyVenueOwners(
+      booking.field.venueId,
+      'Cập nhật booking',
+      `Booking ${booking.field.name} ngày ${dateStr}: ${oldStatus} → ${booking.status}`,
+    );
+
     this.socketGateway.sendBookingStatusUpdate(booking.userId, {
       bookingId: booking.id,
       status: booking.status,
       fieldName: booking.field.name,
     });
 
-    if (booking.status === 'cancelled') {
-      await this.queueService.sendBookingCancelledEmail(booking.user.email, {
-        name: booking.user.name,
-        fieldName: booking.field.name,
-        date: dateStr,
-      });
+    this.socketGateway.broadcastToVenue(booking.field.venueId, 'booking:updated', {
+      bookingId: booking.id,
+      status: booking.status,
+      fieldId: booking.fieldId,
+      fieldName: booking.field.name,
+      date: dateStr,
+    });
+
+    return booking;
+  }
+
+  async cancel(id: string, user: JwtPayloadReturn) {
+    const currentBooking = await this.findOne(id, user);
+    const oldStatus = currentBooking.status;
+
+    if (currentBooking.status === 'cancelled') {
+      throw new BadRequestException('Booking đã được hủy');
     }
+
+    if (currentBooking.status === 'completed') {
+      throw new BadRequestException('Không thể hủy booking đã hoàn thành');
+    }
+
+    const canManage =
+      user.role === 'admin' ||
+      user.role === 'staff' ||
+      user.role === 'super_staff' ||
+      currentBooking.userId === user.id;
+
+    if (!canManage) {
+      throw new ForbiddenException('Bạn không có quyền hủy booking này');
+    }
+
+    const booking = await this.bookingsRepository.cancel(id);
+
+    await this.bookingsRepository.createAuditLog({
+      actorId: user.id,
+      action: 'booking.cancelled',
+      entityType: 'booking',
+      entityId: booking.id,
+      fromValue: oldStatus,
+      toValue: 'cancelled',
+    });
+
+    const dateStr = booking.date.toISOString().split('T')[0];
+
+    await this.queueService.createNotification(
+      booking.userId,
+      'Cập nhật trạng thái đặt sân',
+      `Booking của bạn đã đổi từ ${oldStatus} sang ${booking.status}`,
+    );
+
+    await this.notifyVenueOwners(
+      booking.field.venueId,
+      'Booking đã hủy',
+      `Booking ${booking.field.name} ngày ${dateStr} đã bị hủy`,
+    );
+
+    this.socketGateway.sendBookingStatusUpdate(booking.userId, {
+      bookingId: booking.id,
+      status: booking.status,
+      fieldName: booking.field.name,
+    });
+
+    this.socketGateway.broadcastToVenue(booking.field.venueId, 'booking:updated', {
+      bookingId: booking.id,
+      status: booking.status,
+      fieldId: booking.fieldId,
+      fieldName: booking.field.name,
+      date: dateStr,
+    });
+
+    await this.queueService.sendBookingCancelledEmail(booking.user.email, {
+      name: booking.user.name,
+      fieldName: booking.field.name,
+      date: dateStr,
+    });
+
+    return booking;
+  }
+
+  async remove(id: string, user: JwtPayloadReturn) {
+    if (user.role !== 'admin') {
+      throw new ForbiddenException('Chỉ admin được xóa booking');
+    }
+
+    await this.findOne(id, user);
+    return this.bookingsRepository.delete(id);
+  }
+
+  private async notifyVenueOwners(venueId: string, title: string, message: string) {
+    const ownerUserIds = await this.bookingsRepository.findVenueOwnerUserIds(venueId);
+
+    await Promise.all(
+      ownerUserIds.map((userId) => this.queueService.createNotification(userId, title, message)),
+    );
+  }
+
+  private async emailVenueOwnersNewBooking(
+    venueId: string,
+    payload: {
+      fieldName: string;
+      venueName: string;
+      date: string;
+      startTime: string;
+      endTime: string;
+      customerName: string;
+      bookingId: string;
+    },
+  ) {
+    const owners = await this.bookingsRepository.findVenueOwnersWithContact(venueId);
+
+    await Promise.all(
+      owners.map((owner) =>
+        this.queueService.sendNewBookingOwnerEmail(owner.user.email, {
+          ownerName: owner.user.name,
+          ...payload,
+        }),
+      ),
+    );
   }
 }

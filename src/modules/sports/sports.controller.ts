@@ -25,14 +25,14 @@ export class SportsController {
   @UseGuards(RolesGuard)
   @Roles('admin')
   create(@Body() createSportDto: CreateSportDto) {
-    return this.sportsService.create(createSportDto);
+    return this.sportsService.create(createSportDto.name);
   }
 
   @Patch(':id')
   @UseGuards(RolesGuard)
   @Roles('admin')
   update(@Param('id') id: string, @Body() updateSportDto: UpdateSportDto) {
-    return this.sportsService.update(id, updateSportDto);
+    return this.sportsService.update(id, updateSportDto.name);
   }
 
   @Delete(':id')

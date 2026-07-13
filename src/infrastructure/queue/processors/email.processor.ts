@@ -5,6 +5,7 @@ import {
   MailService,
   BookingConfirmationData,
   BookingCancelledData,
+  NewBookingOwnerData,
 } from '@/infrastructure/mail/mail.service';
 import { EMAIL_JOBS, QUEUE_NAMES } from '../queue.constants';
 
@@ -36,6 +37,13 @@ export class EmailProcessor extends WorkerHost {
 
       case EMAIL_JOBS.PAYMENT_CONFIRMATION:
         await this.mailService.sendPaymentConfirmation(job.data.to, job.data.payload);
+        break;
+
+      case EMAIL_JOBS.NEW_BOOKING_OWNER:
+        await this.mailService.sendNewBookingOwner(
+          job.data.to,
+          job.data.payload as NewBookingOwnerData,
+        );
         break;
 
       case EMAIL_JOBS.WELCOME:

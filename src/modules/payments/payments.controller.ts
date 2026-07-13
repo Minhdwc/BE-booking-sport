@@ -21,6 +21,24 @@ export class PaymentsController {
     return this.paymentsService.handleVnpayReturn(query, res);
   }
 
+  @Public()
+  @Get('vnpay-ipn')
+  async vnpayIpnGet(@Query() query: Record<string, string>, @Res() res: Response) {
+    const result = await this.paymentsService.handleVnpayIpn(query);
+    return res.status(200).json(result);
+  }
+
+  @Public()
+  @Post('vnpay-ipn')
+  async vnpayIpnPost(
+    @Query() query: Record<string, string>,
+    @Body() body: Record<string, string>,
+    @Res() res: Response,
+  ) {
+    const result = await this.paymentsService.handleVnpayIpn({ ...query, ...body });
+    return res.status(200).json(result);
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string, @CurrentUser() user: JwtPayloadReturn) {
     return this.paymentsService.findOne(id, user);
@@ -28,7 +46,12 @@ export class PaymentsController {
 
   @Post()
   create(@Body() createPaymentDto: CreatePaymentDto, @CurrentUser() user: JwtPayloadReturn) {
-    return this.paymentsService.create(createPaymentDto, user);
+    return this.paymentsService.create(
+      user,
+      createPaymentDto.bookingId,
+      createPaymentDto.method,
+      createPaymentDto.status,
+    );
   }
 
   @Post(':id/vnpay-url')
@@ -52,7 +75,11 @@ export class PaymentsController {
     @Body() updatePaymentDto: UpdatePaymentDto,
     @CurrentUser() user: JwtPayloadReturn,
   ) {
-    return this.paymentsService.update(id, updatePaymentDto, user);
+    return this.paymentsService.update(id, user, {
+      bookingId: updatePaymentDto.bookingId,
+      method: updatePaymentDto.method,
+      status: updatePaymentDto.status,
+    });
   }
 
   @Delete(':id')

@@ -1,8 +1,10 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { CurrentUser } from '@/common/decorators/current-user.decorator';
+import { Roles } from '@/common/decorators/roles.decorator';
+import { RolesGuard } from '@/common/guards';
 import { JwtPayloadReturn } from '@/utils/jwt.util';
 import { BookingsService } from './bookings.service';
-import { CreateBookingDto, UpdateBookingDto } from './bookings.dto';
+import { CreateBookingDto, UpdateBookingStatusDto } from './bookings.dto';
 
 @Controller('bookings')
 export class BookingsController {
@@ -19,17 +21,24 @@ export class BookingsController {
   }
 
   @Post()
-  create(@Body() createBookingDto: CreateBookingDto, @CurrentUser() user: JwtPayloadReturn) {
-    return this.bookingsService.create(createBookingDto, user);
+  create(@CurrentUser() user: JwtPayloadReturn, @Body() createBookingDto: CreateBookingDto) {
+    return this.bookingsService.create(
+      user,
+      createBookingDto.fieldId,
+      createBookingDto.timeslotId,
+      createBookingDto.date,
+    );
   }
 
   @Patch(':id')
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'staff', 'super_staff', 'user')
   update(
     @Param('id') id: string,
-    @Body() updateBookingDto: UpdateBookingDto,
     @CurrentUser() user: JwtPayloadReturn,
+    @Body() updateBookingStatusDto: UpdateBookingStatusDto,
   ) {
-    return this.bookingsService.update(id, updateBookingDto, user);
+    return this.bookingsService.updateStatus(id, user, updateBookingStatusDto.status);
   }
 
   @Delete(':id')

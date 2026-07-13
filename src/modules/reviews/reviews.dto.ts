@@ -11,9 +11,6 @@ import {
 
 export class CreateReviewDto {
   @IsUUID()
-  userId: string;
-
-  @IsUUID()
   fieldId: string;
 
   @IsInt()
@@ -29,14 +26,6 @@ export class CreateReviewDto {
 }
 
 export class UpdateReviewDto {
-  @IsOptional()
-  @IsUUID()
-  userId?: string;
-
-  @IsOptional()
-  @IsUUID()
-  fieldId?: string;
-
   @IsOptional()
   @IsInt()
   @Min(1)

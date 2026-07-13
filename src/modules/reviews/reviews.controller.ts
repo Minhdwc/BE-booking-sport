@@ -23,7 +23,12 @@ export class ReviewsController {
 
   @Post()
   create(@Body() createReviewDto: CreateReviewDto, @CurrentUser() user: JwtPayloadReturn) {
-    return this.reviewsService.create(createReviewDto, user);
+    return this.reviewsService.create(
+      user,
+      createReviewDto.fieldId,
+      createReviewDto.rating,
+      createReviewDto.comment,
+    );
   }
 
   @Patch(':id')
@@ -32,7 +37,10 @@ export class ReviewsController {
     @Body() updateReviewDto: UpdateReviewDto,
     @CurrentUser() user: JwtPayloadReturn,
   ) {
-    return this.reviewsService.update(id, updateReviewDto, user);
+    return this.reviewsService.update(id, user, {
+      rating: updateReviewDto.rating,
+      comment: updateReviewDto.comment,
+    });
   }
 
   @Delete(':id')

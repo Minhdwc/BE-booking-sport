@@ -1,21 +1,18 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { PrismaService } from '@/database/prisma.service';
-import { CreateUserDto, UpdateUserDto } from './users.dto';
 import * as bcrypt from 'bcrypt';
+import { UsersRepository } from './users.repository';
 
 @Injectable()
 export class UsersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly usersRepository: UsersRepository) {}
 
   async findAll() {
-    const users = await this.prisma.user.findMany({
-      orderBy: { createdAt: 'desc' },
-    });
+    const users = await this.usersRepository.findAll();
     return users.map(({ password, ...user }) => user);
   }
 
   async findOne(id: string) {
-    const user = await this.prisma.user.findUnique({ where: { id } });
+    const user = await this.usersRepository.findById(id);
     if (!user) {
       throw new NotFoundException('User không tồn tại');
     }
@@ -23,42 +20,97 @@ export class UsersService {
     return userWithoutPassword;
   }
 
-  async create(createUserDto: CreateUserDto) {
-    await this.ensureUniqueFields(createUserDto.email, createUserDto.phone, createUserDto.username);
+  async create(data: {
+    name: string;
+    username: string;
+    email: string;
+    phone: string;
+    password: string;
+    role?: string;
+    isActive?: boolean;
+    avatarUrl?: string;
+  }) {
+    const existingEmail = await this.usersRepository.findByEmail(data.email);
+    if (existingEmail) {
+      throw new ConflictException('Email đã tồn tại');
+    }
 
-    const hashedPassword = await bcrypt.hash(createUserDto.password, 10);
-    const user = await this.prisma.user.create({
-      data: {
-        ...createUserDto,
-        password: hashedPassword,
-      },
+    const existingPhone = await this.usersRepository.findByPhone(data.phone);
+    if (existingPhone) {
+      throw new ConflictException('Số điện thoại đã tồn tại');
+    }
+
+    const existingUsername = await this.usersRepository.findByUsername(data.username);
+    if (existingUsername) {
+      throw new ConflictException('Username đã tồn tại');
+    }
+
+    const hashedPassword = await bcrypt.hash(data.password, 10);
+    const user = await this.usersRepository.create({
+      name: data.name,
+      username: data.username,
+      email: data.email,
+      phone: data.phone,
+      password: hashedPassword,
+      role: data.role,
+      isActive: data.isActive,
+      avatarUrl: data.avatarUrl,
     });
 
     const { password, ...userWithoutPassword } = user;
     return userWithoutPassword;
   }
 
-  async update(id: string, updateUserDto: UpdateUserDto) {
-    const currentUser = await this.prisma.user.findUnique({ where: { id } });
+  async update(
+    id: string,
+    data: {
+      name?: string;
+      username?: string;
+      email?: string;
+      phone?: string;
+      password?: string;
+      role?: string;
+      isActive?: boolean;
+      avatarUrl?: string;
+    },
+  ) {
+    const currentUser = await this.usersRepository.findById(id);
     if (!currentUser) {
       throw new NotFoundException('User không tồn tại');
     }
 
-    await this.ensureUniqueFields(
-      updateUserDto.email,
-      updateUserDto.phone,
-      updateUserDto.username,
-      id,
-    );
+    if (data.email) {
+      const existingEmail = await this.usersRepository.findByEmail(data.email);
+      if (existingEmail && existingEmail.id !== id) {
+        throw new ConflictException('Email đã tồn tại');
+      }
+    }
 
-    const user = await this.prisma.user.update({
-      where: { id },
-      data: {
-        ...updateUserDto,
-        ...(updateUserDto.password && {
-          password: await bcrypt.hash(updateUserDto.password, 10),
-        }),
-      },
+    if (data.phone) {
+      const existingPhone = await this.usersRepository.findByPhone(data.phone);
+      if (existingPhone && existingPhone.id !== id) {
+        throw new ConflictException('Số điện thoại đã tồn tại');
+      }
+    }
+
+    if (data.username) {
+      const existingUsername = await this.usersRepository.findByUsername(data.username);
+      if (existingUsername && existingUsername.id !== id) {
+        throw new ConflictException('Username đã tồn tại');
+      }
+    }
+
+    const user = await this.usersRepository.update(id, {
+      name: data.name,
+      username: data.username,
+      email: data.email,
+      phone: data.phone,
+      role: data.role,
+      isActive: data.isActive,
+      avatarUrl: data.avatarUrl,
+      ...(data.password && {
+        password: await bcrypt.hash(data.password, 10),
+      }),
     });
 
     const { password, ...userWithoutPassword } = user;
@@ -67,36 +119,8 @@ export class UsersService {
 
   async remove(id: string) {
     await this.findOne(id);
-    const user = await this.prisma.user.delete({ where: { id } });
+    const user = await this.usersRepository.delete(id);
     const { password, ...userWithoutPassword } = user;
     return userWithoutPassword;
-  }
-
-  private async ensureUniqueFields(
-    email?: string,
-    phone?: string,
-    username?: string,
-    excludeId?: string,
-  ) {
-    if (email) {
-      const existingEmail = await this.prisma.user.findUnique({ where: { email } });
-      if (existingEmail && existingEmail.id !== excludeId) {
-        throw new ConflictException('Email đã tồn tại');
-      }
-    }
-
-    if (phone) {
-      const existingPhone = await this.prisma.user.findUnique({ where: { phone } });
-      if (existingPhone && existingPhone.id !== excludeId) {
-        throw new ConflictException('Số điện thoại đã tồn tại');
-      }
-    }
-
-    if (username) {
-      const existingUsername = await this.prisma.user.findFirst({ where: { username } });
-      if (existingUsername && existingUsername.id !== excludeId) {
-        throw new ConflictException('Username đã tồn tại');
-      }
-    }
   }
 }

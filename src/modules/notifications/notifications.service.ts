@@ -1,42 +1,34 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { PrismaService } from '@/database/prisma.service';
 import { SocketGateway } from '@/infrastructure/socket/socket.gateway';
+import { NotificationsRepository } from './notifications.repository';
 
 @Injectable()
 export class NotificationsService {
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly notificationsRepository: NotificationsRepository,
     private readonly socket: SocketGateway,
   ) {}
 
   findAll(userId: string) {
-    return this.prisma.notification.findMany({
-      where: { userId },
-      orderBy: { createdAt: 'desc' },
-    });
+    return this.notificationsRepository.findAll(userId);
   }
 
   async countUnread(userId: string): Promise<number> {
-    return this.prisma.notification.count({ where: { userId, isRead: false } });
+    return this.notificationsRepository.countUnread(userId);
   }
 
   async markAsRead(id: string, userId: string) {
-    const notification = await this.prisma.notification.findFirst({ where: { id, userId } });
+    const notification = await this.notificationsRepository.findByIdAndUser(id, userId);
     if (!notification) throw new NotFoundException('Thông báo không tồn tại');
-    return this.prisma.notification.update({ where: { id }, data: { isRead: true } });
+    return this.notificationsRepository.markAsRead(id);
   }
 
   async markAllAsRead(userId: string) {
-    return this.prisma.notification.updateMany({
-      where: { userId, isRead: false },
-      data: { isRead: true },
-    });
+    return this.notificationsRepository.markAllAsRead(userId);
   }
 
   async push(userId: string, title: string, message: string, type?: string) {
-    const notification = await this.prisma.notification.create({
-      data: { userId, title, message },
-    });
+    const notification = await this.notificationsRepository.create(userId, title, message);
 
     this.socket.sendNotificationToUser(userId, { title, message, type });
 

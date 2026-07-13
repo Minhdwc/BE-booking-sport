@@ -22,12 +22,30 @@ export class UsersController {
 
   @Post()
   create(@Body() createUserDto: CreateUserDto) {
-    return this.usersService.create(createUserDto);
+    return this.usersService.create({
+      name: createUserDto.name,
+      username: createUserDto.username,
+      email: createUserDto.email,
+      phone: createUserDto.phone,
+      password: createUserDto.password,
+      role: createUserDto.role,
+      isActive: createUserDto.isActive,
+      avatarUrl: createUserDto.avatarUrl,
+    });
   }
 
   @Patch(':id')
   update(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto) {
-    return this.usersService.update(id, updateUserDto);
+    return this.usersService.update(id, {
+      name: updateUserDto.name,
+      username: updateUserDto.username,
+      email: updateUserDto.email,
+      phone: updateUserDto.phone,
+      password: updateUserDto.password,
+      role: updateUserDto.role,
+      isActive: updateUserDto.isActive,
+      avatarUrl: updateUserDto.avatarUrl,
+    });
   }
 
   @Delete(':id')

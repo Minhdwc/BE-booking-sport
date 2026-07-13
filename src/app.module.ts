@@ -9,11 +9,14 @@ import { QueueModule } from '@/infrastructure/queue/queue.module';
 import { RedisModule } from '@/infrastructure/redis/redis.module';
 import { SocketModule } from '@/infrastructure/socket/socket.module';
 import { AccountModule } from './modules/account/account.module';
+import { AuditLogsModule } from './modules/audit-logs/audit-logs.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { BookingsModule } from './modules/bookings/bookings.module';
 import { FieldsModule } from './modules/fields/fields.module';
+import { HealthModule } from './modules/health/health.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { PaymentsModule } from './modules/payments/payments.module';
+import { ReportsModule } from './modules/reports/reports.module';
 import { ReviewsModule } from './modules/reviews/reviews.module';
 import { SportsModule } from './modules/sports/sports.module';
 import { TimeslotsModule } from './modules/timeslots/timeslots.module';
@@ -26,14 +29,12 @@ import { VenuesModule } from './modules/venues/venues.module';
     ConfigModule.forRoot({ isGlobal: true }),
     CommonModule,
     PrismaModule,
-    // Infrastructure
     RedisModule,
     MailModule,
     QueueModule,
     SocketModule,
     AwsModule,
     PaymentInfrastructureModule,
-    // Feature modules
     AuthModule,
     AccountModule,
     UsersModule,
@@ -46,6 +47,9 @@ import { VenuesModule } from './modules/venues/venues.module';
     BookingsModule,
     NotificationsModule,
     UploadsModule,
+    ReportsModule,
+    AuditLogsModule,
+    HealthModule,
   ],
 })
 export class AppModule {}

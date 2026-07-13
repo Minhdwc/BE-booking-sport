@@ -7,7 +7,7 @@ import {
 import { CloudFrontService } from '@/infrastructure/aws/cloudfront.service';
 import { S3Service } from '@/infrastructure/aws/s3.service';
 import { JwtPayloadReturn } from '@/utils/jwt.util';
-import { ALLOWED_UPLOAD_FOLDERS, ALLOWED_UPLOAD_MIME_TYPES, PresignUploadDto } from './uploads.dto';
+import { ALLOWED_UPLOAD_FOLDERS, ALLOWED_UPLOAD_MIME_TYPES } from './uploads.dto';
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
 
@@ -27,7 +27,11 @@ export class UploadsService {
       throw new PayloadTooLargeException('File không được vượt quá 5MB');
     }
 
-    if (!ALLOWED_UPLOAD_MIME_TYPES.includes(file.mimetype as (typeof ALLOWED_UPLOAD_MIME_TYPES)[number])) {
+    if (
+      !ALLOWED_UPLOAD_MIME_TYPES.includes(
+        file.mimetype as (typeof ALLOWED_UPLOAD_MIME_TYPES)[number],
+      )
+    ) {
       throw new BadRequestException('Chỉ chấp nhận file ảnh JPEG, PNG hoặc WebP');
     }
 
@@ -55,14 +59,19 @@ export class UploadsService {
     };
   }
 
-  async createPresignedUrl(dto: PresignUploadDto, user: JwtPayloadReturn) {
-    if (user.role === 'user' && dto.folder !== 'avatars') {
+  async createPresignedUrl(
+    user: JwtPayloadReturn,
+    folder: string,
+    filename: string,
+    contentType: string,
+  ) {
+    if (user.role === 'user' && folder !== 'avatars') {
       throw new ForbiddenException('Bạn chỉ được upload ảnh đại diện');
     }
 
-    const uploadFolder = dto.folder === 'avatars' ? `avatars/${user.id}` : dto.folder;
-    const key = this.s3Service.generateKey(uploadFolder, dto.filename);
-    const uploadUrl = await this.s3Service.getPresignedUploadUrl(key, dto.contentType);
+    const uploadFolder = folder === 'avatars' ? `avatars/${user.id}` : folder;
+    const key = this.s3Service.generateKey(uploadFolder, filename);
+    const uploadUrl = await this.s3Service.getPresignedUploadUrl(key, contentType);
 
     return {
       key,

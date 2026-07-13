@@ -14,13 +14,16 @@ model Booking {
   timeslotId String
   date       DateTime  @db.Date
   status     String    @default("pending") // pending, confirmed, cancelled, completed
+  slotLock   String?   @default("active") @map("slot_lock")
   createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @default(now())
   field      Field     @relation(fields: [fieldId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "bookings_fieldId_fields_id_fk")
   timeslot   Timeslot  @relation(fields: [timeslotId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "bookings_timeslotId_timeslots_id_fk")
   user       User      @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "bookings_userId_users_id_fk")
   payments   Payment[]
 
-  @@unique([fieldId, date, timeslotId], map: "unique_booking")
+  @@unique([fieldId, date, timeslotId, slotLock], map: "unique_booking")
+  @@index([userId, fieldId, date])
   @@map("bookings")
 }
 
@@ -40,6 +43,7 @@ model Field {
   venue       Venue     @relation(fields: [venueId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fields_venueId_venues_id_fk")
   reviews     Review[]
 
+  @@index([venueId, sportId, status])
   @@map("fields")
 }
 
@@ -56,13 +60,15 @@ model Notification {
 }
 
 model Payment {
-  id        String   @id @default(uuid())
-  bookingId String
-  amount    Int
-  method    String   @default("credit_card") // credit_card, bank_transfer, cash
-  status    String   @default("pending") // pending, paid, failed
-  createdAt DateTime @default(now()) @map("created_at")
-  booking   Booking  @relation(fields: [bookingId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "payments_bookingId_bookings_id_fk")
+  id              String    @id @default(uuid())
+  bookingId       String
+  amount          Int
+  method          String    @default("credit_card") // credit_card, bank_transfer, cash, vnpay
+  status          String    @default("pending") // pending, paid, failed
+  transactionCode String?   @map("transaction_code")
+  paidAt          DateTime? @map("paid_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  booking         Booking   @relation(fields: [bookingId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "payments_bookingId_bookings_id_fk")
 
   @@map("payments")
 }
@@ -82,7 +88,7 @@ model Review {
 
 model Sport {
   id        String   @id @default(uuid())
-  name      String
+  name      String   @unique
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
   fields    Field[]
@@ -97,6 +103,7 @@ model Timeslot {
   createdAt DateTime  @default(now()) @map("created_at")
   bookings  Booking[]
 
+  @@unique([startTime, endTime], map: "unique_timeslot_range")
   @@map("timeslots")
 }
 
@@ -104,33 +111,61 @@ model User {
   id            String         @id @default(uuid())
   name          String
   username      String
-  email         String         @unique()
-  phone         String         @unique()
+  email         String         @unique
+  phone         String         @unique
   password      String
   role          String         @default("user") // user, admin, staff
   avatarUrl     String?        @map("avatar_url")
-  venueId       String?
   isActive      Boolean        @default(true)
   createdAt     DateTime       @default(now()) @map("created_at")
   updatedAt     DateTime       @updatedAt @map("updated_at")
   bookings      Booking[]
   notifications Notification[]
   reviews       Review[]
-  venue         Venue?         @relation(fields: [venueId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  venueOwners   VenueOwner[]
 
   @@map("users")
 }
 
 model Venue {
-  id          String   @id @default(uuid())
+  id          String       @id @default(uuid())
   name        String
   location    String
   description String?
-  images      String[] @default([])
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  images      String[]     @default([])
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
   fields      Field[]
-  users       User[]
+  venueOwners VenueOwner[]
 
   @@map("venues")
+}
+
+model VenueOwner {
+  id        String   @id @default(uuid())
+  venueId   String
+  userId    String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  venue     Venue    @relation(fields: [venueId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@unique([venueId, userId], map: "unique_venue_owner")
+  @@map("venue_owners")
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  actorId    String?
+  action     String
+  entityType String
+  entityId   String
+  fromValue  String?
+  toValue    String?
+  note       String?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([entityType, entityId])
+  @@index([actorId])
+  @@map("audit_logs")
 }

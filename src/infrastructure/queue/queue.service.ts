@@ -1,7 +1,11 @@
 import { InjectQueue } from '@nestjs/bullmq';
 import { Injectable } from '@nestjs/common';
 import { Queue } from 'bullmq';
-import { BookingConfirmationData, BookingCancelledData } from '@/infrastructure/mail/mail.service';
+import {
+  BookingConfirmationData,
+  BookingCancelledData,
+  NewBookingOwnerData,
+} from '@/infrastructure/mail/mail.service';
 import { EMAIL_JOBS, NOTIFICATION_JOBS, QUEUE_NAMES } from './queue.constants';
 
 @Injectable()
@@ -33,6 +37,14 @@ export class QueueService {
   ) {
     await this.emailQueue.add(
       EMAIL_JOBS.PAYMENT_CONFIRMATION,
+      { to, payload },
+      { attempts: 3, backoff: { type: 'exponential', delay: 5000 } },
+    );
+  }
+
+  async sendNewBookingOwnerEmail(to: string, payload: NewBookingOwnerData) {
+    await this.emailQueue.add(
+      EMAIL_JOBS.NEW_BOOKING_OWNER,
       { to, payload },
       { attempts: 3, backoff: { type: 'exponential', delay: 5000 } },
     );

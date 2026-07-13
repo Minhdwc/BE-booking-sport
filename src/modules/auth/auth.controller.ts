@@ -10,13 +10,19 @@ export class AuthController {
   @Public()
   @Post('login')
   login(@Body() loginDto: LoginDto) {
-    return this.authService.login(loginDto);
+    return this.authService.login(loginDto.email, loginDto.password);
   }
 
   @Public()
   @Post('register')
   register(@Body() registerDto: RegisterDto) {
-    return this.authService.register(registerDto);
+    return this.authService.register(
+      registerDto.name,
+      registerDto.username,
+      registerDto.email,
+      registerDto.phone,
+      registerDto.password,
+    );
   }
 
   @Public()

@@ -1,38 +1,33 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { PrismaService } from '@/database/prisma.service';
-import { CreateSportDto, UpdateSportDto } from './sports.dto';
+import { SportsRepository } from './sports.repository';
 
 @Injectable()
 export class SportsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly sportsRepository: SportsRepository) {}
+
   findAll() {
-    return this.prisma.sport.findMany({
-      orderBy: { createdAt: 'desc' },
-    });
+    return this.sportsRepository.findAll();
   }
 
   async findOne(id: string) {
-    const sport = await this.prisma.sport.findUnique({ where: { id } });
+    const sport = await this.sportsRepository.findById(id);
     if (!sport) {
       throw new NotFoundException('Sport không tồn tại');
     }
     return sport;
   }
 
-  create(createSportDto: CreateSportDto) {
-    return this.prisma.sport.create({ data: createSportDto });
+  create(name: string) {
+    return this.sportsRepository.create(name);
   }
 
-  async update(id: string, updateSportDto: UpdateSportDto) {
+  async update(id: string, name?: string) {
     await this.findOne(id);
-    return this.prisma.sport.update({
-      where: { id },
-      data: updateSportDto,
-    });
+    return this.sportsRepository.update(id, name);
   }
 
   async remove(id: string) {
     await this.findOne(id);
-    return this.prisma.sport.delete({ where: { id } });
+    return this.sportsRepository.delete(id);
   }
 }

@@ -18,7 +18,12 @@ export class AccountController {
 
   @Patch('profile')
   updateProfile(@CurrentUser() user: JwtPayloadReturn, @Body() updateProfileDto: UpdateProfileDto) {
-    return this.accountService.updateProfile(user.id, updateProfileDto);
+    return this.accountService.updateProfile(user.id, {
+      name: updateProfileDto.name,
+      username: updateProfileDto.username,
+      phone: updateProfileDto.phone,
+      avatarUrl: updateProfileDto.avatarUrl,
+    });
   }
 
   @Patch('change-password')
@@ -26,6 +31,10 @@ export class AccountController {
     @CurrentUser() user: JwtPayloadReturn,
     @Body() changePasswordDto: ChangePasswordDto,
   ) {
-    return this.accountService.changePassword(user.id, changePasswordDto);
+    return this.accountService.changePassword(
+      user.id,
+      changePasswordDto.currentPassword,
+      changePasswordDto.newPassword,
+    );
   }
 }

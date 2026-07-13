@@ -1,51 +1,35 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { PrismaService } from '@/database/prisma.service';
 import { JwtPayloadReturn } from '@/utils/jwt.util';
-import { CreateFieldDto, UpdateFieldDto } from './fields.dto';
+import { FieldsRepository } from './fields.repository';
 
 @Injectable()
 export class FieldsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly fieldsRepository: FieldsRepository) {}
 
   async findAll(user?: JwtPayloadReturn) {
-    // admin xem tất cả field
     if (user?.role === 'admin') {
-      return this.prisma.field.findMany({
-        include: { sport: true, venue: true },
-        orderBy: { createdAt: 'desc' },
-      });
+      return this.fieldsRepository.findAll();
     }
 
-    // staff chỉ xem field của sân mình
     if (user && (user.role === 'staff' || user.role === 'super_staff')) {
-      const venueId = await this.getVenueIdOfStaff(user);
+      const ownedVenueIds = await this.fieldsRepository.findOwnedVenueIds(user.id);
+      if (ownedVenueIds.length === 0) {
+        throw new ForbiddenException('Tài khoản chưa được gán sân');
+      }
 
-      return this.prisma.field.findMany({
-        where: { venueId },
-        include: { sport: true, venue: true },
-        orderBy: { createdAt: 'desc' },
-      });
+      return this.fieldsRepository.findAll({ venueId: { in: ownedVenueIds } });
     }
 
-    // khách và user thường chỉ thấy field đang hoạt động
-    return this.prisma.field.findMany({
-      where: { status: 'active' },
-      include: { sport: true, venue: true },
-      orderBy: { createdAt: 'desc' },
-    });
+    return this.fieldsRepository.findAll({ status: 'active' });
   }
 
   async findOne(id: string, user?: JwtPayloadReturn) {
-    const field = await this.prisma.field.findUnique({
-      where: { id },
-      include: { sport: true, venue: true },
-    });
+    const field = await this.fieldsRepository.findById(id);
 
     if (!field) {
       throw new NotFoundException('Field không tồn tại');
     }
 
-    // khách và user thường không được xem field đã ẩn
     if (!user || user.role === 'user') {
       if (field.status !== 'active') {
         throw new NotFoundException('Field không tồn tại');
@@ -57,70 +41,111 @@ export class FieldsService {
       return field;
     }
 
-    const venueId = await this.getVenueIdOfStaff(user);
-    if (field.venueId !== venueId) {
+    const ownedVenueIds = await this.fieldsRepository.findOwnedVenueIds(user.id);
+    if (ownedVenueIds.length === 0) {
+      throw new ForbiddenException('Tài khoản chưa được gán sân');
+    }
+    if (!ownedVenueIds.includes(field.venueId)) {
       throw new ForbiddenException('Bạn chỉ được thao tác trên sân của mình');
     }
 
     return field;
   }
 
-  async create(createFieldDto: CreateFieldDto, user: JwtPayloadReturn) {
+  async create(
+    user: JwtPayloadReturn,
+    name: string,
+    price: number,
+    sportId: string,
+    venueId: string,
+    description?: string,
+    status?: string,
+    images?: string[],
+  ) {
     if (user.role === 'staff' || user.role === 'super_staff') {
-      const venueId = await this.getVenueIdOfStaff(user);
-      if (createFieldDto.venueId !== venueId) {
+      const ownedVenueIds = await this.fieldsRepository.findOwnedVenueIds(user.id);
+      if (ownedVenueIds.length === 0) {
+        throw new ForbiddenException('Tài khoản chưa được gán sân');
+      }
+      if (!ownedVenueIds.includes(venueId)) {
         throw new ForbiddenException('Bạn chỉ được tạo field cho sân của mình');
       }
     }
 
-    await this.ensureRelations(createFieldDto.sportId, createFieldDto.venueId);
+    const sport = await this.fieldsRepository.findSportById(sportId);
+    if (!sport) {
+      throw new NotFoundException('Sport không tồn tại');
+    }
 
-    return this.prisma.field.create({
-      data: createFieldDto,
-      include: { sport: true, venue: true },
+    const venue = await this.fieldsRepository.findVenueById(venueId);
+    if (!venue) {
+      throw new NotFoundException('Venue không tồn tại');
+    }
+
+    return this.fieldsRepository.create({
+      name,
+      price,
+      sportId,
+      venueId,
+      description,
+      status,
+      images,
     });
   }
 
-  async update(id: string, updateFieldDto: UpdateFieldDto, user: JwtPayloadReturn) {
+  async update(
+    id: string,
+    user: JwtPayloadReturn,
+    data: {
+      name?: string;
+      description?: string;
+      price?: number;
+      status?: string;
+      images?: string[];
+      sportId?: string;
+      venueId?: string;
+    },
+  ) {
     await this.findOne(id, user);
 
-    // staff không được chuyển field sang venue khác
-    if ((user.role === 'staff' || user.role === 'super_staff') && updateFieldDto.venueId) {
-      const venueId = await this.getVenueIdOfStaff(user);
-      if (updateFieldDto.venueId !== venueId) {
+    if ((user.role === 'staff' || user.role === 'super_staff') && data.venueId) {
+      const ownedVenueIds = await this.fieldsRepository.findOwnedVenueIds(user.id);
+      if (ownedVenueIds.length === 0) {
+        throw new ForbiddenException('Tài khoản chưa được gán sân');
+      }
+      if (!ownedVenueIds.includes(data.venueId)) {
         throw new ForbiddenException('Bạn không được chuyển field sang sân khác');
       }
     }
 
-    await this.ensureRelations(updateFieldDto.sportId, updateFieldDto.venueId);
+    if (data.sportId) {
+      const sport = await this.fieldsRepository.findSportById(data.sportId);
+      if (!sport) {
+        throw new NotFoundException('Sport không tồn tại');
+      }
+    }
 
-    return this.prisma.field.update({
-      where: { id },
-      data: updateFieldDto,
-      include: { sport: true, venue: true },
-    });
+    if (data.venueId) {
+      const venue = await this.fieldsRepository.findVenueById(data.venueId);
+      if (!venue) {
+        throw new NotFoundException('Venue không tồn tại');
+      }
+    }
+
+    return this.fieldsRepository.update(id, data);
   }
 
   async remove(id: string, user: JwtPayloadReturn) {
     await this.findOne(id, user);
-    return this.prisma.field.delete({ where: { id } });
+    return this.fieldsRepository.delete(id);
   }
 
   async getAvailability(id: string, date: string, user?: JwtPayloadReturn) {
     await this.findOne(id, user);
 
-    const timeslots = await this.prisma.timeslot.findMany({
-      orderBy: { startTime: 'asc' },
-    });
+    const timeslots = await this.fieldsRepository.findTimeslots();
 
-    const bookedBookings = await this.prisma.booking.findMany({
-      where: {
-        fieldId: id,
-        date: new Date(date),
-        status: { notIn: ['cancelled'] },
-      },
-      select: { timeslotId: true },
-    });
+    const bookedBookings = await this.fieldsRepository.findBookedTimeslots(id, new Date(date));
 
     const bookedTimeslotIds = new Set(bookedBookings.map((booking) => booking.timeslotId));
 
@@ -134,34 +159,5 @@ export class FieldsService {
         status: bookedTimeslotIds.has(timeslot.id) ? 'booked' : 'available',
       })),
     };
-  }
-
-  private async getVenueIdOfStaff(user: JwtPayloadReturn): Promise<string> {
-    const currentUser = await this.prisma.user.findUnique({
-      where: { id: user.id },
-      select: { venueId: true },
-    });
-
-    if (!currentUser?.venueId) {
-      throw new ForbiddenException('Tài khoản chưa được gán sân');
-    }
-
-    return currentUser.venueId;
-  }
-
-  private async ensureRelations(sportId?: string, venueId?: string) {
-    if (sportId) {
-      const sport = await this.prisma.sport.findUnique({ where: { id: sportId } });
-      if (!sport) {
-        throw new NotFoundException('Sport không tồn tại');
-      }
-    }
-
-    if (venueId) {
-      const venue = await this.prisma.venue.findUnique({ where: { id: venueId } });
-      if (!venue) {
-        throw new NotFoundException('Venue không tồn tại');
-      }
-    }
   }
 }

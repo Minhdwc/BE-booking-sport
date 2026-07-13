@@ -1,6 +1,6 @@
-import { IsArray, IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsArray, IsNotEmpty, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
 
-export class CreateVenueDto {
+export class DTOCreateVenue {
   @IsString()
   @IsNotEmpty()
   name: string;
@@ -18,9 +18,13 @@ export class CreateVenueDto {
   @IsArray()
   @IsString({ each: true })
   images?: string[];
+
+  @IsOptional()
+  @IsUUID()
+  ownerId?: string;
 }
 
-export class UpdateVenueDto {
+export class DTOUpdateVenue {
   @IsOptional()
   @IsString()
   @IsNotEmpty()
@@ -40,4 +44,9 @@ export class UpdateVenueDto {
   @IsArray()
   @IsString({ each: true })
   images?: string[];
+}
+
+export class DTOAddVenueOwner {
+  @IsUUID()
+  userId: string;
 }

@@ -1,20 +1,18 @@
 import { ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
-import { PrismaService } from '@/database/prisma.service';
 import { QueueService } from '@/infrastructure/queue/queue.service';
 import { JwtProvider } from '@/utils/jwt.util';
-import { LoginDto, RegisterDto } from './auth.dto';
+import { AuthRepository } from './auth.repository';
 
 @Injectable()
 export class AuthService {
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly authRepository: AuthRepository,
     private readonly queueService: QueueService,
   ) {}
 
-  async login(loginDto: LoginDto) {
-    const { email, password: rawPassword } = loginDto;
-    const user = await this.prisma.user.findUnique({ where: { email } });
+  async login(email: string, rawPassword: string) {
+    const user = await this.authRepository.findByEmail(email);
 
     if (!user) {
       throw new UnauthorizedException('Email hoặc mật khẩu không đúng');
@@ -52,23 +50,32 @@ export class AuthService {
     return { user: userWithoutPassword, accessToken, refreshToken };
   }
 
-  async register(registerDto: RegisterDto) {
-    const { name, username, email, phone, password: rawPassword } = registerDto;
-
-    const existingEmail = await this.prisma.user.findUnique({ where: { email } });
+  async register(
+    name: string,
+    username: string,
+    email: string,
+    phone: string,
+    rawPassword: string,
+  ) {
+    const existingEmail = await this.authRepository.findByEmail(email);
     if (existingEmail) {
       throw new ConflictException('Email đã tồn tại');
     }
 
-    const existingPhone = await this.prisma.user.findUnique({ where: { phone } });
+    const existingPhone = await this.authRepository.findByPhone(phone);
     if (existingPhone) {
       throw new ConflictException('Số điện thoại đã tồn tại');
     }
 
     const hashedPassword = await bcrypt.hash(rawPassword, 10);
 
-    const user = await this.prisma.user.create({
-      data: { name, username, email, phone, role: 'user', password: hashedPassword },
+    const user = await this.authRepository.createUser({
+      name,
+      username,
+      email,
+      phone,
+      role: 'user',
+      password: hashedPassword,
     });
 
     await this.queueService.sendWelcomeEmail(user.email, user.name);

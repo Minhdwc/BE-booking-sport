@@ -1,11 +1,4 @@
-import {
-  Body,
-  Controller,
-  Post,
-  Query,
-  UploadedFile,
-  UseInterceptors,
-} from '@nestjs/common';
+import { Body, Controller, Post, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { CurrentUser } from '@/common/decorators/current-user.decorator';
 import { JwtPayloadReturn } from '@/utils/jwt.util';
@@ -32,6 +25,11 @@ export class UploadsController {
 
   @Post('presign')
   presign(@Body() presignUploadDto: PresignUploadDto, @CurrentUser() user: JwtPayloadReturn) {
-    return this.uploadsService.createPresignedUrl(presignUploadDto, user);
+    return this.uploadsService.createPresignedUrl(
+      user,
+      presignUploadDto.folder,
+      presignUploadDto.filename,
+      presignUploadDto.contentType,
+    );
   }
 }

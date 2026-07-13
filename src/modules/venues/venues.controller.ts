@@ -14,8 +14,8 @@ import { Public } from '@/common/decorators/public.decorator';
 import { Roles } from '@/common/decorators/roles.decorator';
 import { RolesGuard } from '@/common/guards';
 import { JwtPayloadReturn } from '@/utils/jwt.util';
+import { DTOAddVenueOwner, DTOCreateVenue, DTOUpdateVenue } from './venues.dto';
 import { VenuesService } from './venues.service';
-import { CreateVenueDto, UpdateVenueDto } from './venues.dto';
 
 @Controller('venues')
 export class VenuesController {
@@ -23,8 +23,20 @@ export class VenuesController {
 
   @Public()
   @Get()
-  findAll(@Query() query: Record<string, string>, @CurrentUser() user?: JwtPayloadReturn) {
-    return this.venuesService.findAll(query, user);
+  findAll(
+    @Query('search') search?: string,
+    @Query('page') pageParam?: string,
+    @Query('limit') limitParam?: string,
+    @CurrentUser() user?: JwtPayloadReturn,
+  ) {
+    return this.venuesService.findAll(user, search, pageParam, limitParam);
+  }
+
+  @Get(':id/owners')
+  @UseGuards(RolesGuard)
+  @Roles('admin')
+  listOwners(@Param('id') id: string) {
+    return this.venuesService.listOwners(id);
   }
 
   @Public()
@@ -36,8 +48,15 @@ export class VenuesController {
   @Post()
   @UseGuards(RolesGuard)
   @Roles('admin')
-  create(@Body() createVenueDto: CreateVenueDto) {
-    return this.venuesService.create(createVenueDto);
+  create(@Body() bodyPayload: DTOCreateVenue) {
+    return this.venuesService.create(bodyPayload);
+  }
+
+  @Post(':id/owners')
+  @UseGuards(RolesGuard)
+  @Roles('admin')
+  addOwner(@Param('id') id: string, @Body() bodyPayload: DTOAddVenueOwner) {
+    return this.venuesService.addOwner(id, bodyPayload.userId);
   }
 
   @Patch(':id')
@@ -45,10 +64,17 @@ export class VenuesController {
   @Roles('admin', 'staff', 'super_staff')
   update(
     @Param('id') id: string,
-    @Body() updateVenueDto: UpdateVenueDto,
+    @Body() bodyPayload: DTOUpdateVenue,
     @CurrentUser() user: JwtPayloadReturn,
   ) {
-    return this.venuesService.update(id, updateVenueDto, user);
+    return this.venuesService.update(id, user, bodyPayload);
+  }
+
+  @Delete(':id/owners/:userId')
+  @UseGuards(RolesGuard)
+  @Roles('admin')
+  removeOwner(@Param('id') id: string, @Param('userId') userId: string) {
+    return this.venuesService.removeOwner(id, userId);
   }
 
   @Delete(':id')
