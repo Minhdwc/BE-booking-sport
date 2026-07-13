@@ -48,8 +48,11 @@ export class VenuesController {
   @Post()
   @UseGuards(RolesGuard)
   @Roles('admin', 'staff')
-  create(@Body() bodyPayload: DTOCreateVenue) {
-    return this.venuesService.create(bodyPayload);
+  create(@Body() bodyPayload: DTOCreateVenue, @CurrentUser() user: JwtPayloadReturn) {
+    return this.venuesService.create({
+      ...bodyPayload,
+      ownerId: bodyPayload.ownerId || user.id,
+    });
   }
 
   @Post(':id/owners')

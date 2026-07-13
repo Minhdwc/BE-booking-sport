@@ -41,6 +41,10 @@ export class VenuesService {
     return venue;
   }
 
+  async findByOwnerId(ownerId: string) {
+    return this.venuesRepository.findByOwnerId(ownerId);
+  }
+
   async create(payload: DTOCreateVenue) {
     if (payload.ownerId) {
       const owner = await this.venuesRepository.findUserById(payload.ownerId);
@@ -52,6 +56,12 @@ export class VenuesService {
     return this.venuesRepository.create({
       name: payload.name,
       location: payload.location,
+      longitude: payload.longitude,
+      latitude: payload.latitude,
+      openTime: payload.openTime,
+      closeTime: payload.closeTime,
+      restStartTime: payload.restStartTime,
+      restEndTime: payload.restEndTime,
       description: payload.description,
       images: payload.images,
       ownerId: payload.ownerId,
