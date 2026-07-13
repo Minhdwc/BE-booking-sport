@@ -47,7 +47,7 @@ export class VenuesController {
 
   @Post()
   @UseGuards(RolesGuard)
-  @Roles('admin')
+  @Roles('admin', 'staff')
   create(@Body() bodyPayload: DTOCreateVenue) {
     return this.venuesService.create(bodyPayload);
   }
