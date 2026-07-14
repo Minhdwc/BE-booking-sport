@@ -9,6 +9,7 @@ import { QueueModule } from '@/infrastructure/queue/queue.module';
 import { RedisModule } from '@/infrastructure/redis/redis.module';
 import { SocketModule } from '@/infrastructure/socket/socket.module';
 import { AccountModule } from './modules/account/account.module';
+import { AmenitiesModule } from './modules/amenities/amenities.module';
 import { AuditLogsModule } from './modules/audit-logs/audit-logs.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { BookingsModule } from './modules/bookings/bookings.module';
@@ -21,7 +22,10 @@ import { ReviewsModule } from './modules/reviews/reviews.module';
 import { SportsModule } from './modules/sports/sports.module';
 import { TimeslotsModule } from './modules/timeslots/timeslots.module';
 import { UploadsModule } from './modules/uploads/uploads.module';
+import { UserPaymentMethodsModule } from './modules/user-payment-methods/user-payment-methods.module';
 import { UsersModule } from './modules/users/users.module';
+import { VenuePaymentAccountsModule } from './modules/venue-payment-accounts/venue-payment-accounts.module';
+import { VenueSportsModule } from './modules/venue-sports/venue-sports.module';
 import { VenuesModule } from './modules/venues/venues.module';
 
 @Module({
@@ -44,6 +48,10 @@ import { VenuesModule } from './modules/venues/venues.module';
     FieldsModule,
     ReviewsModule,
     PaymentsModule,
+    UserPaymentMethodsModule,
+    VenuePaymentAccountsModule,
+    VenueSportsModule,
+    AmenitiesModule,
     BookingsModule,
     NotificationsModule,
     UploadsModule,

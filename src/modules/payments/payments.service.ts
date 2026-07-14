@@ -12,6 +12,7 @@ import {
 import { QueueService } from '@/infrastructure/queue/queue.service';
 import { SocketGateway } from '@/infrastructure/socket/socket.gateway';
 import { JwtPayloadReturn } from '@/utils/jwt.util';
+import { CreatePaymentDto, UpdatePaymentDto } from './payments.dto';
 import { PaymentsRepository } from './payments.repository';
 
 @Injectable()
@@ -28,7 +29,7 @@ export class PaymentsService {
       return this.paymentsRepository.findAll();
     }
 
-    if (user.role === 'staff' || user.role === 'super_staff') {
+    if (user.role === 'staff') {
       const ownedVenueIds = await this.paymentsRepository.findOwnedVenueIds(user.id);
       if (ownedVenueIds.length === 0) {
         throw new ForbiddenException('Tài khoản chưa được gán sân');
@@ -53,7 +54,7 @@ export class PaymentsService {
       return payment;
     }
 
-    if (user.role === 'staff' || user.role === 'super_staff') {
+    if (user.role === 'staff') {
       const ownedVenueIds = await this.paymentsRepository.findOwnedVenueIds(user.id);
       if (!ownedVenueIds.includes(payment.booking.field.venueId)) {
         throw new ForbiddenException('Bạn chỉ được xem thanh toán thuộc sân của mình');
@@ -68,14 +69,14 @@ export class PaymentsService {
     return payment;
   }
 
-  async create(user: JwtPayloadReturn, bookingId: string, method?: string, status?: string) {
-    const booking = await this.paymentsRepository.findBookingById(bookingId);
+  async create(user: JwtPayloadReturn, dto: CreatePaymentDto) {
+    const booking = await this.paymentsRepository.findBookingById(dto.bookingId);
 
     if (!booking) {
       throw new NotFoundException('Booking không tồn tại');
     }
 
-    if (user.role === 'staff' || user.role === 'super_staff') {
+    if (user.role === 'staff') {
       throw new ForbiddenException('Staff không được tạo thanh toán');
     }
 
@@ -83,23 +84,28 @@ export class PaymentsService {
       throw new ForbiddenException('Bạn chỉ được tạo thanh toán của mình');
     }
 
+    if (dto.venuePaymentAccountId) {
+      const account = await this.paymentsRepository.findVenuePaymentAccountById(
+        dto.venuePaymentAccountId,
+      );
+      if (!account || account.venueId !== booking.field.venueId) {
+        throw new BadRequestException('Tài khoản thanh toán không thuộc venue của booking');
+      }
+      if (!account.isActive) {
+        throw new BadRequestException('Tài khoản thanh toán đang không hoạt động');
+      }
+    }
+
     return this.paymentsRepository.create({
-      bookingId,
+      bookingId: dto.bookingId,
       amount: booking.field.price,
-      method,
-      status: user.role === 'user' ? 'pending' : (status ?? 'pending'),
+      method: dto.method ?? 'bank_transfer',
+      status: user.role === 'user' ? 'pending' : (dto.status ?? 'pending'),
+      venuePaymentAccountId: dto.venuePaymentAccountId,
     });
   }
 
-  async update(
-    id: string,
-    user: JwtPayloadReturn,
-    data: {
-      bookingId?: string;
-      method?: string;
-      status?: string;
-    },
-  ) {
+  async update(id: string, user: JwtPayloadReturn, data: UpdatePaymentDto) {
     if (user.role === 'user') {
       throw new ForbiddenException('Bạn không có quyền cập nhật thanh toán');
     }
@@ -107,9 +113,24 @@ export class PaymentsService {
     const existing = await this.findOne(id, user);
     const oldStatus = existing.status;
 
+    if (data.venuePaymentAccountId) {
+      const account = await this.paymentsRepository.findVenuePaymentAccountById(
+        data.venuePaymentAccountId,
+      );
+      if (!account || account.venueId !== existing.booking.field.venueId) {
+        throw new BadRequestException('Tài khoản thanh toán không thuộc venue của booking');
+      }
+    }
+
     const payment = await this.paymentsRepository.update(id, {
-      ...data,
-      ...(data.status === 'paid' ? { paidAt: existing.paidAt ?? new Date() } : {}),
+      ...(data.bookingId !== undefined ? { bookingId: data.bookingId } : {}),
+      ...(data.method !== undefined ? { method: data.method } : {}),
+      ...(data.status !== undefined ? { status: data.status } : {}),
+      ...(data.venuePaymentAccountId !== undefined
+        ? { venuePaymentAccountId: data.venuePaymentAccountId }
+        : {}),
+      ...(data.transactionCode !== undefined ? { transactionCode: data.transactionCode } : {}),
+      ...(data.status === 'success' ? { paidAt: existing.paidAt ?? new Date() } : {}),
     });
 
     if (data.status && data.status !== oldStatus) {
@@ -122,7 +143,7 @@ export class PaymentsService {
         toValue: data.status,
       });
 
-      if (data.status === 'paid') {
+      if (data.status === 'success') {
         await this.onPaymentSuccess(payment);
       }
     }
@@ -143,7 +164,7 @@ export class PaymentsService {
   async createVnpayUrl(paymentId: string, user: JwtPayloadReturn, ipAddr: string) {
     const payment = await this.findOne(paymentId, user);
 
-    if (payment.status === 'paid') {
+    if (payment.status === 'success') {
       throw new BadRequestException('Thanh toán đã được hoàn tất');
     }
 
@@ -182,9 +203,10 @@ export class PaymentsService {
     }
 
     if (isSuccess) {
-      const updated = await this.markPaymentPaid(
+      const updated = await this.markPaymentSuccess(
         paymentId,
         vnpayQuery.vnp_TransactionNo || vnpayQuery.vnp_TxnRef,
+        vnpayQuery,
       );
       await this.onPaymentSuccess(updated);
       return res.redirect(`${frontendUrl}/payments?status=success&paymentId=${paymentId}`);
@@ -214,14 +236,15 @@ export class PaymentsService {
       return { RspCode: '04', Message: 'Invalid amount' };
     }
 
-    if (payment.status === 'paid') {
+    if (payment.status === 'success') {
       return { RspCode: '02', Message: 'Order already confirmed' };
     }
 
     if (isSuccess) {
-      const updated = await this.markPaymentPaid(
+      const updated = await this.markPaymentSuccess(
         paymentId,
         vnpayQuery.vnp_TransactionNo || vnpayQuery.vnp_TxnRef,
+        vnpayQuery,
       );
       await this.onPaymentSuccess(updated);
       return { RspCode: '00', Message: 'Confirm Success' };
@@ -242,21 +265,29 @@ export class PaymentsService {
     return { RspCode: '00', Message: 'Confirm Success' };
   }
 
-  private async markPaymentPaid(paymentId: string, transactionCode: string) {
+  private async markPaymentSuccess(
+    paymentId: string,
+    transactionCode: string,
+    gatewayResponse?: Record<string, string | undefined>,
+  ) {
     const existing = await this.paymentsRepository.findById(paymentId);
     const oldStatus = existing?.status ?? 'pending';
 
-    const payment = await this.paymentsRepository.markPaid(paymentId, transactionCode);
+    const payment = await this.paymentsRepository.markSuccess(
+      paymentId,
+      transactionCode,
+      gatewayResponse,
+    );
 
     await this.paymentsRepository.confirmBooking(payment.bookingId);
 
     await this.paymentsRepository.createAuditLog({
       actorId: null,
-      action: 'payment.paid',
+      action: 'payment.success',
       entityType: 'payment',
       entityId: payment.id,
       fromValue: oldStatus,
-      toValue: 'paid',
+      toValue: 'success',
       note: transactionCode,
     });
 
@@ -295,7 +326,7 @@ export class PaymentsService {
       bookingId: payment.bookingId,
       status: 'confirmed',
       paymentId: payment.id,
-      paymentStatus: 'paid',
+      paymentStatus: 'success',
     });
   }
 }

@@ -25,7 +25,7 @@ export class ReportsService {
     };
 
     const paymentWhere: Prisma.PaymentWhereInput = {
-      status: 'paid',
+      status: 'success',
       ...(venueFilter ? { booking: { field: { venueId: { in: venueFilter } } } } : {}),
       ...(fromDate || toDate
         ? {
@@ -79,7 +79,7 @@ export class ReportsService {
       return null;
     }
 
-    if (user.role === 'staff' || user.role === 'super_staff') {
+    if (user.role === 'staff') {
       const ownerships = await this.reportsRepository.findOwnedVenueIds(user.id);
       const ownedVenueIds = ownerships.map((o) => o.venueId);
       if (ownedVenueIds.length === 0) {
@@ -101,7 +101,7 @@ export class ReportsService {
       return venue;
     }
 
-    if (user.role === 'staff' || user.role === 'super_staff') {
+    if (user.role === 'staff') {
       const ownership = await this.reportsRepository.findVenueOwnership(user.id, venueId);
       if (!ownership) {
         throw new ForbiddenException('Bạn không có quyền truy cập sân vận động này');

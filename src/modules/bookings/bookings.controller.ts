@@ -32,7 +32,7 @@ export class BookingsController {
 
   @Patch(':id')
   @UseGuards(RolesGuard)
-  @Roles('admin', 'staff', 'super_staff', 'user')
+  @Roles('admin', 'staff', 'user')
   update(
     @Param('id') id: string,
     @CurrentUser() user: JwtPayloadReturn,

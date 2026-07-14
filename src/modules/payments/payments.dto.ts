@@ -1,18 +1,20 @@
-import { IsNotEmpty, IsOptional, IsString, IsUUID } from 'class-validator';
+import { IsIn, IsNotEmpty, IsOptional, IsString, IsUUID } from 'class-validator';
 
 export class CreatePaymentDto {
   @IsUUID()
   bookingId: string;
 
   @IsOptional()
-  @IsString()
-  @IsNotEmpty()
+  @IsIn(['bank_transfer', 'momo', 'zalopay', 'vnpay'])
   method?: string;
 
   @IsOptional()
-  @IsString()
-  @IsNotEmpty()
+  @IsIn(['pending', 'success', 'failed', 'cancelled'])
   status?: string;
+
+  @IsOptional()
+  @IsUUID()
+  venuePaymentAccountId?: string;
 }
 
 export class UpdatePaymentDto {
@@ -21,12 +23,19 @@ export class UpdatePaymentDto {
   bookingId?: string;
 
   @IsOptional()
-  @IsString()
-  @IsNotEmpty()
+  @IsIn(['bank_transfer', 'momo', 'zalopay', 'vnpay'])
   method?: string;
+
+  @IsOptional()
+  @IsIn(['pending', 'success', 'failed', 'cancelled', 'refunded'])
+  status?: string;
+
+  @IsOptional()
+  @IsUUID()
+  venuePaymentAccountId?: string | null;
 
   @IsOptional()
   @IsString()
   @IsNotEmpty()
-  status?: string;
+  transactionCode?: string;
 }

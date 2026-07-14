@@ -2,16 +2,6 @@ import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '@/database/prisma.service';
 
-const PAYMENT_INCLUDE = {
-  booking: {
-    include: {
-      user: { select: { id: true, name: true, email: true, phone: true } },
-      field: { include: { venue: true } },
-      timeslot: true,
-    },
-  },
-} as const;
-
 @Injectable()
 export class PaymentsRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -19,7 +9,15 @@ export class PaymentsRepository {
   findAll(where?: Prisma.PaymentWhereInput) {
     return this.prisma.payment.findMany({
       where,
-      include: PAYMENT_INCLUDE,
+      include: {
+        booking: {
+          include: {
+            user: { select: { id: true, name: true, email: true, phone: true } },
+            field: { include: { venue: true } },
+            timeslot: true,
+          },
+        },
+      },
       orderBy: { createdAt: 'desc' },
     });
   }
@@ -27,7 +25,15 @@ export class PaymentsRepository {
   findById(id: string) {
     return this.prisma.payment.findUnique({
       where: { id },
-      include: PAYMENT_INCLUDE,
+      include: {
+        booking: {
+          include: {
+            user: { select: { id: true, name: true, email: true, phone: true } },
+            field: { include: { venue: true } },
+            timeslot: true,
+          },
+        },
+      },
     });
   }
 
@@ -46,10 +52,22 @@ export class PaymentsRepository {
     });
   }
 
+  findVenuePaymentAccountById(id: string) {
+    return this.prisma.venuePaymentAccount.findUnique({ where: { id } });
+  }
+
   create(data: Prisma.PaymentUncheckedCreateInput) {
     return this.prisma.payment.create({
       data,
-      include: PAYMENT_INCLUDE,
+      include: {
+        booking: {
+          include: {
+            user: { select: { id: true, name: true, email: true, phone: true } },
+            field: { include: { venue: true } },
+            timeslot: true,
+          },
+        },
+      },
     });
   }
 
@@ -57,7 +75,15 @@ export class PaymentsRepository {
     return this.prisma.payment.update({
       where: { id },
       data,
-      include: PAYMENT_INCLUDE,
+      include: {
+        booking: {
+          include: {
+            user: { select: { id: true, name: true, email: true, phone: true } },
+            field: { include: { venue: true } },
+            timeslot: true,
+          },
+        },
+      },
     });
   }
 
@@ -79,16 +105,26 @@ export class PaymentsRepository {
     });
   }
 
-  markPaid(id: string, transactionCode: string) {
+  markSuccess(id: string, transactionCode: string, gatewayResponse?: Prisma.InputJsonValue) {
     return this.prisma.payment.update({
       where: { id },
       data: {
-        status: 'paid',
+        status: 'success',
         transactionCode,
         paidAt: new Date(),
         method: 'vnpay',
+        ...(gatewayResponse && { gatewayResponse }),
       },
-      include: PAYMENT_INCLUDE,
+      include: {
+        booking: {
+          include: {
+            user: { select: { id: true, name: true, email: true, phone: true } },
+            field: { include: { venue: true } },
+            timeslot: true,
+          },
+        },
+        venuePaymentAccount: true,
+      },
     });
   }
 
