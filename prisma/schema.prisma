@@ -128,15 +128,21 @@ model User {
 }
 
 model Venue {
-  id          String       @id @default(uuid())
-  name        String
-  location    String
-  description String?
-  images      String[]     @default([])
-  createdAt   DateTime     @default(now()) @map("created_at")
-  updatedAt   DateTime     @updatedAt @map("updated_at")
-  fields      Field[]
-  venueOwners VenueOwner[]
+  id            String       @id @default(uuid())
+  name          String
+  location      String
+  longitude     Float        @default(0)
+  latitude      Float        @default(0)
+  openTime      String       @default("06:00") @map("open_time")
+  closeTime     String       @default("22:00") @map("close_time")
+  restStartTime String?
+  restEndTime   String?
+  description   String?
+  images        String[]     @default([])
+  createdAt     DateTime     @default(now()) @map("created_at")
+  updatedAt     DateTime     @updatedAt @map("updated_at")
+  fields        Field[]
+  venueOwners   VenueOwner[]
 
   @@map("venues")
 }

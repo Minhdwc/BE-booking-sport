@@ -37,9 +37,28 @@ export class VenuesRepository {
     return this.prisma.venue.findUnique({ where: { id } });
   }
 
+  findByOwnerId(ownerId: string) {
+    return this.prisma.venue.findMany({
+      where: { venueOwners: { some: { userId: ownerId } } },
+      include: {
+        venueOwners: {
+          include: {
+            venue: true,
+          },
+        },
+      },
+    });
+  }
+
   create(data: {
     name: string;
     location: string;
+    longitude: number;
+    latitude: number;
+    openTime: string;
+    closeTime: string;
+    restStartTime?: string;
+    restEndTime?: string;
     description?: string;
     images?: string[];
     ownerId?: string;
@@ -48,6 +67,12 @@ export class VenuesRepository {
       data: {
         name: data.name,
         location: data.location,
+        longitude: data.longitude,
+        latitude: data.latitude,
+        openTime: data.openTime,
+        closeTime: data.closeTime,
+        restStartTime: data.restStartTime,
+        restEndTime: data.restEndTime,
         description: data.description,
         images: data.images,
         ...(data.ownerId
@@ -73,6 +98,12 @@ export class VenuesRepository {
     data: {
       name?: string;
       location?: string;
+      longitude?: number;
+      latitude?: number;
+      openTime?: string;
+      closeTime?: string;
+      restStartTime?: string;
+      restEndTime?: string;
       description?: string;
       images?: string[];
     },
