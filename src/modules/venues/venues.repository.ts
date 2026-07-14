@@ -17,6 +17,9 @@ export class VenuesRepository {
           where: { status: 'active' },
           include: { sport: true },
         },
+        venueImages: {
+          orderBy: { position: 'asc' },
+        },
       },
     });
   }
@@ -27,7 +30,10 @@ export class VenuesRepository {
       include: {
         fields: {
           where: { status: 'active' },
-          include: { sport: true },
+          include: { sport: true, fieldImages: { orderBy: { position: 'asc' } } },
+        },
+        venueImages: {
+          orderBy: { position: 'asc' },
         },
       },
     });
@@ -41,10 +47,9 @@ export class VenuesRepository {
     return this.prisma.venue.findMany({
       where: { venueOwners: { some: { userId: ownerId } } },
       include: {
-        venueOwners: {
-          include: {
-            venue: true,
-          },
+        venueOwners: true,
+        venueImages: {
+          orderBy: { position: 'asc' },
         },
       },
     });
@@ -60,7 +65,6 @@ export class VenuesRepository {
     restStartTime?: string;
     restEndTime?: string;
     description?: string;
-    images?: string[];
     ownerId?: string;
   }) {
     return this.prisma.venue.create({
@@ -74,7 +78,6 @@ export class VenuesRepository {
         restStartTime: data.restStartTime,
         restEndTime: data.restEndTime,
         description: data.description,
-        images: data.images,
         ...(data.ownerId
           ? {
               venueOwners: {
@@ -88,6 +91,9 @@ export class VenuesRepository {
           include: {
             user: { select: { id: true, name: true, email: true, role: true } },
           },
+        },
+        venueImages: {
+          orderBy: { position: 'asc' },
         },
       },
     });
@@ -105,16 +111,27 @@ export class VenuesRepository {
       restStartTime?: string;
       restEndTime?: string;
       description?: string;
-      images?: string[];
     },
   ) {
     return this.prisma.venue.update({
       where: { id },
-      data,
+      data: data,
+      include: {
+        venueImages: {
+          orderBy: { position: 'asc' },
+        },
+      },
     });
   }
 
-  delete(id: string) {
+  async hasBookings(venueId: string) {
+    const count = await this.prisma.booking.count({
+      where: { field: { venueId } },
+    });
+    return count > 0;
+  }
+
+  async delete(id: string) {
     return this.prisma.venue.delete({ where: { id } });
   }
 
@@ -166,5 +183,28 @@ export class VenuesRepository {
 
   deleteOwner(id: string) {
     return this.prisma.venueOwner.delete({ where: { id } });
+  }
+
+  findVenueImages(venueId: string) {
+    return this.prisma.venueImages.findMany({
+      where: { venueId },
+      orderBy: { position: 'asc' },
+    });
+  }
+
+  findVenueImageById(id: string) {
+    return this.prisma.venueImages.findUnique({ where: { id } });
+  }
+
+  createVenueImage(data: { venueId: string; url: string; position: number; isThumbnail: boolean }) {
+    return this.prisma.venueImages.create({ data });
+  }
+
+  deleteVenueImage(id: string) {
+    return this.prisma.venueImages.delete({ where: { id } });
+  }
+
+  countVenueImages(venueId: string) {
+    return this.prisma.venueImages.count({ where: { venueId } });
   }
 }

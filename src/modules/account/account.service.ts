@@ -70,19 +70,6 @@ export class AccountService {
         'reviews:write',
         'sports:write',
       ],
-      super_staff: [
-        'users:read',
-        'venues:read',
-        'venues:write',
-        'fields:read',
-        'fields:write',
-        'timeslots:read',
-        'timeslots:write',
-        'bookings:read',
-        'bookings:write',
-        'payments:read',
-        'reviews:read',
-      ],
       staff: [
         'venues:read',
         'fields:read',
@@ -99,7 +86,7 @@ export class AccountService {
 
     return {
       ...userWithoutPassword,
-      permissions: permissionsByRole[user.role] ?? [],
+      permissions: permissionsByRole[user.role] || [],
     };
   }
 

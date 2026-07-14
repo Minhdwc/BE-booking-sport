@@ -23,21 +23,21 @@ export class TimeslotsController {
 
   @Post()
   @UseGuards(RolesGuard)
-  @Roles('admin', 'staff', 'super_staff')
+  @Roles('admin', 'staff')
   create(@Body() createTimeslotDto: CreateTimeslotDto) {
     return this.timeslotsService.create(createTimeslotDto.startTime, createTimeslotDto.endTime);
   }
 
   @Patch(':id')
   @UseGuards(RolesGuard)
-  @Roles('admin', 'staff', 'super_staff')
+  @Roles('admin', 'staff')
   update(@Param('id') id: string, @Body() updateTimeslotDto: UpdateTimeslotDto) {
     return this.timeslotsService.update(id, updateTimeslotDto.startTime, updateTimeslotDto.endTime);
   }
 
   @Delete(':id')
   @UseGuards(RolesGuard)
-  @Roles('admin', 'staff', 'super_staff')
+  @Roles('admin', 'staff')
   remove(@Param('id') id: string) {
     return this.timeslotsService.remove(id);
   }

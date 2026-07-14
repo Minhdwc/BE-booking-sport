@@ -1,17 +1,27 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { S3Service } from '@/infrastructure/aws/s3.service';
 import { JwtPayloadReturn } from '@/utils/jwt.util';
+import { CreateFieldDto, UpdateFieldDto } from './fields.dto';
 import { FieldsRepository } from './fields.repository';
 
 @Injectable()
 export class FieldsService {
-  constructor(private readonly fieldsRepository: FieldsRepository) {}
+  constructor(
+    private readonly fieldsRepository: FieldsRepository,
+    private readonly s3Service: S3Service,
+  ) {}
 
   async findAll(user?: JwtPayloadReturn) {
     if (user?.role === 'admin') {
       return this.fieldsRepository.findAll();
     }
 
-    if (user && (user.role === 'staff' || user.role === 'super_staff')) {
+    if (user && user.role === 'staff') {
       const ownedVenueIds = await this.fieldsRepository.findOwnedVenueIds(user.id);
       if (ownedVenueIds.length === 0) {
         throw new ForbiddenException('Tài khoản chưa được gán sân');
@@ -52,63 +62,43 @@ export class FieldsService {
     return field;
   }
 
-  async create(
-    user: JwtPayloadReturn,
-    name: string,
-    price: number,
-    sportId: string,
-    venueId: string,
-    description?: string,
-    status?: string,
-    images?: string[],
-  ) {
-    if (user.role === 'staff' || user.role === 'super_staff') {
+  async create(user: JwtPayloadReturn, dto: CreateFieldDto) {
+    if (user.role === 'staff') {
       const ownedVenueIds = await this.fieldsRepository.findOwnedVenueIds(user.id);
       if (ownedVenueIds.length === 0) {
         throw new ForbiddenException('Tài khoản chưa được gán sân');
       }
-      if (!ownedVenueIds.includes(venueId)) {
+      if (!ownedVenueIds.includes(dto.venueId)) {
         throw new ForbiddenException('Bạn chỉ được tạo field cho sân của mình');
       }
     }
 
-    const sport = await this.fieldsRepository.findSportById(sportId);
+    const sport = await this.fieldsRepository.findSportById(dto.sportId);
     if (!sport) {
       throw new NotFoundException('Sport không tồn tại');
     }
 
-    const venue = await this.fieldsRepository.findVenueById(venueId);
+    const venue = await this.fieldsRepository.findVenueById(dto.venueId);
     if (!venue) {
       throw new NotFoundException('Venue không tồn tại');
     }
 
     return this.fieldsRepository.create({
-      name,
-      price,
-      sportId,
-      venueId,
-      description,
-      status,
-      images,
+      name: dto.name,
+      price: dto.price,
+      minDurationMinutes: dto.minDurationMinutes,
+      durationStepMinutes: dto.durationStepMinutes,
+      sportId: dto.sportId,
+      venueId: dto.venueId,
+      description: dto.description,
+      status: dto.status,
     });
   }
 
-  async update(
-    id: string,
-    user: JwtPayloadReturn,
-    data: {
-      name?: string;
-      description?: string;
-      price?: number;
-      status?: string;
-      images?: string[];
-      sportId?: string;
-      venueId?: string;
-    },
-  ) {
+  async update(id: string, user: JwtPayloadReturn, data: UpdateFieldDto) {
     await this.findOne(id, user);
 
-    if ((user.role === 'staff' || user.role === 'super_staff') && data.venueId) {
+    if (user.role === 'staff' && data.venueId) {
       const ownedVenueIds = await this.fieldsRepository.findOwnedVenueIds(user.id);
       if (ownedVenueIds.length === 0) {
         throw new ForbiddenException('Tài khoản chưa được gán sân');
@@ -137,7 +127,41 @@ export class FieldsService {
 
   async remove(id: string, user: JwtPayloadReturn) {
     await this.findOne(id, user);
+
+    const images = await this.fieldsRepository.findFieldImages(id);
+    await Promise.all(images.map((image) => this.safeDeleteS3ByUrl(image.url)));
+
     return this.fieldsRepository.delete(id);
+  }
+
+  async uploadImage(id: string, user: JwtPayloadReturn, file: Express.Multer.File | undefined) {
+    if (!file) {
+      throw new BadRequestException('File không tồn tại');
+    }
+
+    await this.findOne(id, user);
+
+    const uploaded = await this.s3Service.upload(file, 'fields');
+    const count = await this.fieldsRepository.countFieldImages(id);
+
+    return this.fieldsRepository.createFieldImage({
+      fieldId: id,
+      url: uploaded.url,
+      position: count,
+      isThumbnail: count === 0,
+    });
+  }
+
+  async removeImage(fieldId: string, imageId: string, user: JwtPayloadReturn) {
+    await this.findOne(fieldId, user);
+
+    const image = await this.fieldsRepository.findFieldImageById(imageId);
+    if (!image || image.fieldId !== fieldId) {
+      throw new NotFoundException('Ảnh không tồn tại');
+    }
+
+    await this.safeDeleteS3ByUrl(image.url);
+    return this.fieldsRepository.deleteFieldImage(imageId);
   }
 
   async getAvailability(id: string, date: string, user?: JwtPayloadReturn) {
@@ -159,5 +183,16 @@ export class FieldsService {
         status: bookedTimeslotIds.has(timeslot.id) ? 'booked' : 'available',
       })),
     };
+  }
+
+  private async safeDeleteS3ByUrl(url: string) {
+    try {
+      const key = new URL(url).pathname.replace(/^\//, '');
+      if (key) {
+        await this.s3Service.delete(key);
+      }
+    } catch {
+      // ignore cleanup errors
+    }
   }
 }

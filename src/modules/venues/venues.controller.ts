@@ -7,8 +7,12 @@ import {
   Patch,
   Post,
   Query,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 import { CurrentUser } from '@/common/decorators/current-user.decorator';
 import { Public } from '@/common/decorators/public.decorator';
 import { Roles } from '@/common/decorators/roles.decorator';
@@ -55,6 +59,23 @@ export class VenuesController {
     });
   }
 
+  @Post(':id/images')
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'staff')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      limits: { fileSize: 5 * 1024 * 1024 },
+    }),
+  )
+  uploadImage(
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File,
+    @CurrentUser() user: JwtPayloadReturn,
+  ) {
+    return this.venuesService.uploadImage(id, user, file);
+  }
+
   @Post(':id/owners')
   @UseGuards(RolesGuard)
   @Roles('admin')
@@ -64,13 +85,24 @@ export class VenuesController {
 
   @Patch(':id')
   @UseGuards(RolesGuard)
-  @Roles('admin', 'staff', 'super_staff')
+  @Roles('admin', 'staff')
   update(
     @Param('id') id: string,
     @Body() bodyPayload: DTOUpdateVenue,
     @CurrentUser() user: JwtPayloadReturn,
   ) {
     return this.venuesService.update(id, user, bodyPayload);
+  }
+
+  @Delete(':id/images/:imageId')
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'staff')
+  removeImage(
+    @Param('id') id: string,
+    @Param('imageId') imageId: string,
+    @CurrentUser() user: JwtPayloadReturn,
+  ) {
+    return this.venuesService.removeImage(id, imageId, user);
   }
 
   @Delete(':id/owners/:userId')
@@ -82,7 +114,7 @@ export class VenuesController {
 
   @Delete(':id')
   @UseGuards(RolesGuard)
-  @Roles('admin', 'staff', 'super_staff')
+  @Roles('admin', 'staff')
   remove(@Param('id') id: string, @CurrentUser() user: JwtPayloadReturn) {
     return this.venuesService.remove(id, user);
   }

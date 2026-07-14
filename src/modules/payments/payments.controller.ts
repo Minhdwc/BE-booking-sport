@@ -46,12 +46,7 @@ export class PaymentsController {
 
   @Post()
   create(@Body() createPaymentDto: CreatePaymentDto, @CurrentUser() user: JwtPayloadReturn) {
-    return this.paymentsService.create(
-      user,
-      createPaymentDto.bookingId,
-      createPaymentDto.method,
-      createPaymentDto.status,
-    );
+    return this.paymentsService.create(user, createPaymentDto);
   }
 
   @Post(':id/vnpay-url')
@@ -75,11 +70,7 @@ export class PaymentsController {
     @Body() updatePaymentDto: UpdatePaymentDto,
     @CurrentUser() user: JwtPayloadReturn,
   ) {
-    return this.paymentsService.update(id, user, {
-      bookingId: updatePaymentDto.bookingId,
-      method: updatePaymentDto.method,
-      status: updatePaymentDto.status,
-    });
+    return this.paymentsService.update(id, user, updatePaymentDto);
   }
 
   @Delete(':id')

@@ -1,5 +1,6 @@
 import { Body, Controller, Post, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 import { CurrentUser } from '@/common/decorators/current-user.decorator';
 import { JwtPayloadReturn } from '@/utils/jwt.util';
 import { PresignUploadDto } from './uploads.dto';
@@ -12,6 +13,7 @@ export class UploadsController {
   @Post()
   @UseInterceptors(
     FileInterceptor('file', {
+      storage: memoryStorage(),
       limits: { fileSize: 5 * 1024 * 1024 },
     }),
   )

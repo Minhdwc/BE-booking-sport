@@ -1,12 +1,21 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { S3Service } from '@/infrastructure/aws/s3.service';
 import { JwtPayloadReturn } from '@/utils/jwt.util';
 import { DTOCreateVenue, DTOUpdateVenue } from './venues.dto';
 import { VenuesRepository } from './venues.repository';
 
 @Injectable()
 export class VenuesService {
-  constructor(private readonly venuesRepository: VenuesRepository) {}
+  constructor(
+    private readonly venuesRepository: VenuesRepository,
+    private readonly s3Service: S3Service,
+  ) {}
 
   async findAll(user?: JwtPayloadReturn, search?: string, pageParam?: string, limitParam?: string) {
     const limit = Number(limitParam) || 10;
@@ -14,7 +23,7 @@ export class VenuesService {
 
     const where: Prisma.VenueWhereInput = {};
 
-    if (user && (user.role === 'staff' || user.role === 'super_staff')) {
+    if (user && user.role === 'staff') {
       where.venueOwners = { some: { userId: user.id } };
     }
 
@@ -63,13 +72,12 @@ export class VenuesService {
       restStartTime: payload.restStartTime,
       restEndTime: payload.restEndTime,
       description: payload.description,
-      images: payload.images,
       ownerId: payload.ownerId,
     });
   }
 
   async update(id: string, user: JwtPayloadReturn, data: DTOUpdateVenue) {
-    if (user.role === 'staff' || user.role === 'super_staff') {
+    if (user.role === 'staff') {
       const ownerships = await this.venuesRepository.findOwnedVenueIds(user.id);
       if (!ownerships.some((o) => o.venueId === id)) {
         throw new ForbiddenException('Bạn không có quyền quản lý sân vận động này');
@@ -87,13 +95,13 @@ export class VenuesService {
   }
 
   async remove(id: string, user: JwtPayloadReturn) {
-    if (user.role === 'staff' || user.role === 'super_staff') {
+    if (user.role === 'staff') {
       const ownerships = await this.venuesRepository.findOwnedVenueIds(user.id);
       if (!ownerships.some((o) => o.venueId === id)) {
-        throw new ForbiddenException('Bạn không có quyền quản lý venue này');
+        throw new ForbiddenException('Bạn không có quyền quản lý sân vận động này');
       }
     } else if (user.role !== 'admin') {
-      throw new ForbiddenException('Bạn không có quyền quản lý venue');
+      throw new ForbiddenException('Bạn không có quyền quản lý sân vận động');
     }
 
     const existing = await this.venuesRepository.findByIdSimple(id);
@@ -101,7 +109,70 @@ export class VenuesService {
       throw new NotFoundException('Venue không tồn tại');
     }
 
+    const images = await this.venuesRepository.findVenueImages(id);
+    if (images.length > 0) {
+      await Promise.all(
+        images.map((image) => this.s3Service.delete(this.s3Service.extractKeyFromUrl(image.url))),
+      );
+    }
+
     return this.venuesRepository.delete(id);
+  }
+
+  async uploadImage(id: string, user: JwtPayloadReturn, file: Express.Multer.File | undefined) {
+    if (!file) {
+      throw new BadRequestException('File không tồn tại');
+    }
+
+    if (user.role === 'staff') {
+      const ownerships = await this.venuesRepository.findOwnedVenueIds(user.id);
+      if (!ownerships.some((o) => o.venueId === id)) {
+        throw new ForbiddenException('Bạn không có quyền quản lý sân vận động này');
+      }
+    } else if (user.role !== 'admin') {
+      throw new ForbiddenException('Bạn không có quyền quản lý sân vận động');
+    }
+    await this.findOne(id);
+
+    const uploaded = await this.s3Service.upload(file, 'venues');
+    const count = await this.venuesRepository.countVenueImages(id);
+
+    return this.venuesRepository.createVenueImage({
+      venueId: id,
+      url: uploaded.url,
+      position: count,
+      isThumbnail: count === 0,
+    });
+  }
+
+  async removeImage(venueId: string, imageId: string, user: JwtPayloadReturn) {
+    if (user.role === 'staff') {
+      const ownerships = await this.venuesRepository.findOwnedVenueIds(user.id);
+      if (!ownerships.some((o) => o.venueId === venueId)) {
+        throw new ForbiddenException('Bạn không có quyền quản lý sân vận động này');
+      }
+    } else if (user.role !== 'admin') {
+      throw new ForbiddenException('Bạn không có quyền quản lý sân vận động');
+    }
+
+    const image = await this.venuesRepository.findVenueImageById(imageId);
+    if (!image || image.venueId !== venueId) {
+      throw new NotFoundException('Ảnh không tồn tại');
+    }
+
+    await this.safeDeleteS3ByUrl(image.url);
+    return this.venuesRepository.deleteVenueImage(imageId);
+  }
+
+  private async safeDeleteS3ByUrl(url: string) {
+    try {
+      const key = this.s3Service.extractKeyFromUrl(url);
+      if (key) {
+        await this.s3Service.delete(key);
+      }
+    } catch {
+      // ignore cleanup errors
+    }
   }
 
   async listOwners(venueId: string) {

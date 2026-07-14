@@ -74,6 +74,11 @@ export class S3Service {
     this.logger.log(`Deleted file from S3: ${key}`);
   }
 
+  extractKeyFromUrl(url: string): string {
+    const pathname = new URL(url).pathname.replace(/^\//, '');
+    return pathname;
+  }
+
   async getPresignedUploadUrl(key: string, contentType: string, expiresIn = 300): Promise<string> {
     const command = new PutObjectCommand({
       Bucket: this.bucket,

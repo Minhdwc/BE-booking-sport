@@ -23,7 +23,7 @@ export class BookingsService {
       return this.bookingsRepository.findAll();
     }
 
-    if (user.role === 'staff' || user.role === 'super_staff') {
+    if (user.role === 'staff') {
       const ownedVenueIds = await this.bookingsRepository.findOwnedVenueIds(user.id);
       if (ownedVenueIds.length === 0) {
         throw new ForbiddenException('Tài khoản chưa được gán sân');
@@ -48,7 +48,7 @@ export class BookingsService {
       return booking;
     }
 
-    if (user.role === 'staff' || user.role === 'super_staff') {
+    if (user.role === 'staff') {
       const ownedVenueIds = await this.bookingsRepository.findOwnedVenueIds(user.id);
       if (!ownedVenueIds.includes(booking.field.venueId)) {
         throw new ForbiddenException('Bạn chỉ được xem booking thuộc sân của mình');
@@ -106,6 +106,7 @@ export class BookingsService {
       date: bookingDate,
       status: 'pending',
       slotLock: 'active',
+      amount: bookingField.price,
     });
 
     const dateStr = booking.date.toISOString().split('T')[0];
@@ -174,7 +175,7 @@ export class BookingsService {
       return this.cancel(id, user);
     }
 
-    if (user.role !== 'admin' && user.role !== 'staff' && user.role !== 'super_staff') {
+    if (user.role !== 'admin' && user.role !== 'staff') {
       throw new ForbiddenException('Bạn không có quyền cập nhật trạng thái booking');
     }
 
@@ -249,10 +250,7 @@ export class BookingsService {
     }
 
     const canManage =
-      user.role === 'admin' ||
-      user.role === 'staff' ||
-      user.role === 'super_staff' ||
-      currentBooking.userId === user.id;
+      user.role === 'admin' || user.role === 'staff' || currentBooking.userId === user.id;
 
     if (!canManage) {
       throw new ForbiddenException('Bạn không có quyền hủy booking này');

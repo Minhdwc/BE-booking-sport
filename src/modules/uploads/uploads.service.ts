@@ -7,7 +7,6 @@ import {
 import { CloudFrontService } from '@/infrastructure/aws/cloudfront.service';
 import { S3Service } from '@/infrastructure/aws/s3.service';
 import { JwtPayloadReturn } from '@/utils/jwt.util';
-import { ALLOWED_UPLOAD_FOLDERS, ALLOWED_UPLOAD_MIME_TYPES } from './uploads.dto';
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
 
@@ -27,15 +26,11 @@ export class UploadsService {
       throw new PayloadTooLargeException('File không được vượt quá 5MB');
     }
 
-    if (
-      !ALLOWED_UPLOAD_MIME_TYPES.includes(
-        file.mimetype as (typeof ALLOWED_UPLOAD_MIME_TYPES)[number],
-      )
-    ) {
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.mimetype)) {
       throw new BadRequestException('Chỉ chấp nhận file ảnh JPEG, PNG hoặc WebP');
     }
 
-    if (!ALLOWED_UPLOAD_FOLDERS.includes(folder as (typeof ALLOWED_UPLOAD_FOLDERS)[number])) {
+    if (!['avatars', 'venues', 'fields', 'payments'].includes(folder)) {
       throw new BadRequestException('Thư mục upload không hợp lệ');
     }
 
@@ -43,10 +38,7 @@ export class UploadsService {
       throw new ForbiddenException('Bạn chỉ được upload ảnh đại diện');
     }
 
-    if (
-      (user.role === 'staff' || user.role === 'super_staff') &&
-      !['avatars', 'venues', 'fields'].includes(folder)
-    ) {
+    if (user.role === 'staff' && !['avatars', 'venues', 'fields', 'payments'].includes(folder)) {
       throw new ForbiddenException('Thư mục upload không hợp lệ');
     }
 

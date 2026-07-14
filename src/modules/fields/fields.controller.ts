@@ -7,8 +7,12 @@ import {
   Patch,
   Post,
   Query,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 import { CurrentUser } from '@/common/decorators/current-user.decorator';
 import { Public } from '@/common/decorators/public.decorator';
 import { Roles } from '@/common/decorators/roles.decorator';
@@ -45,42 +49,53 @@ export class FieldsController {
 
   @Post()
   @UseGuards(RolesGuard)
-  @Roles('admin', 'staff', 'super_staff')
+  @Roles('admin', 'staff')
   create(@Body() createFieldDto: CreateFieldDto, @CurrentUser() user: JwtPayloadReturn) {
-    return this.fieldsService.create(
-      user,
-      createFieldDto.name,
-      createFieldDto.price,
-      createFieldDto.sportId,
-      createFieldDto.venueId,
-      createFieldDto.description,
-      createFieldDto.status,
-      createFieldDto.images,
-    );
+    return this.fieldsService.create(user, createFieldDto);
+  }
+
+  @Post(':id/images')
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'staff')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      limits: { fileSize: 5 * 1024 * 1024 },
+    }),
+  )
+  uploadImage(
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File,
+    @CurrentUser() user: JwtPayloadReturn,
+  ) {
+    return this.fieldsService.uploadImage(id, user, file);
   }
 
   @Patch(':id')
   @UseGuards(RolesGuard)
-  @Roles('admin', 'staff', 'super_staff')
+  @Roles('admin', 'staff')
   update(
     @Param('id') id: string,
     @Body() updateFieldDto: UpdateFieldDto,
     @CurrentUser() user: JwtPayloadReturn,
   ) {
-    return this.fieldsService.update(id, user, {
-      name: updateFieldDto.name,
-      description: updateFieldDto.description,
-      price: updateFieldDto.price,
-      status: updateFieldDto.status,
-      images: updateFieldDto.images,
-      sportId: updateFieldDto.sportId,
-      venueId: updateFieldDto.venueId,
-    });
+    return this.fieldsService.update(id, user, updateFieldDto);
+  }
+
+  @Delete(':id/images/:imageId')
+  @UseGuards(RolesGuard)
+  @Roles('admin', 'staff')
+  removeImage(
+    @Param('id') id: string,
+    @Param('imageId') imageId: string,
+    @CurrentUser() user: JwtPayloadReturn,
+  ) {
+    return this.fieldsService.removeImage(id, imageId, user);
   }
 
   @Delete(':id')
   @UseGuards(RolesGuard)
-  @Roles('admin', 'staff', 'super_staff')
+  @Roles('admin', 'staff')
   remove(@Param('id') id: string, @CurrentUser() user: JwtPayloadReturn) {
     return this.fieldsService.remove(id, user);
   }

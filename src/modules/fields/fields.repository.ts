@@ -2,8 +2,6 @@ import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '@/database/prisma.service';
 
-const FIELD_INCLUDE = { sport: true, venue: true } as const;
-
 @Injectable()
 export class FieldsRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -11,7 +9,11 @@ export class FieldsRepository {
   findAll(where?: Prisma.FieldWhereInput) {
     return this.prisma.field.findMany({
       where,
-      include: FIELD_INCLUDE,
+      include: {
+        sport: true,
+        venue: true,
+        fieldImages: { orderBy: { position: 'asc' } },
+      },
       orderBy: { createdAt: 'desc' },
     });
   }
@@ -19,7 +21,11 @@ export class FieldsRepository {
   findById(id: string) {
     return this.prisma.field.findUnique({
       where: { id },
-      include: FIELD_INCLUDE,
+      include: {
+        sport: true,
+        venue: true,
+        fieldImages: { orderBy: { position: 'asc' } },
+      },
     });
   }
 
@@ -42,7 +48,11 @@ export class FieldsRepository {
   create(data: Prisma.FieldUncheckedCreateInput) {
     return this.prisma.field.create({
       data,
-      include: FIELD_INCLUDE,
+      include: {
+        sport: true,
+        venue: true,
+        fieldImages: { orderBy: { position: 'asc' } },
+      },
     });
   }
 
@@ -50,7 +60,11 @@ export class FieldsRepository {
     return this.prisma.field.update({
       where: { id },
       data,
-      include: FIELD_INCLUDE,
+      include: {
+        sport: true,
+        venue: true,
+        fieldImages: { orderBy: { position: 'asc' } },
+      },
     });
   }
 
@@ -73,5 +87,28 @@ export class FieldsRepository {
       },
       select: { timeslotId: true },
     });
+  }
+
+  findFieldImages(fieldId: string) {
+    return this.prisma.fieldImages.findMany({
+      where: { fieldId },
+      orderBy: { position: 'asc' },
+    });
+  }
+
+  findFieldImageById(id: string) {
+    return this.prisma.fieldImages.findUnique({ where: { id } });
+  }
+
+  createFieldImage(data: { fieldId: string; url: string; position: number; isThumbnail: boolean }) {
+    return this.prisma.fieldImages.create({ data });
+  }
+
+  deleteFieldImage(id: string) {
+    return this.prisma.fieldImages.delete({ where: { id } });
+  }
+
+  countFieldImages(fieldId: string) {
+    return this.prisma.fieldImages.count({ where: { fieldId } });
   }
 }

@@ -29,14 +29,17 @@ export class CreateFieldDto {
   @Min(0)
   price: number;
 
+  @IsInt()
+  @Min(15)
+  minDurationMinutes: number;
+
+  @IsInt()
+  @Min(15)
+  durationStepMinutes: number;
+
   @IsOptional()
   @IsString()
   status?: string;
-
-  @IsOptional()
-  @IsArray()
-  @IsString({ each: true })
-  images?: string[];
 
   @IsUUID()
   sportId: string;
@@ -62,13 +65,18 @@ export class UpdateFieldDto {
   price?: number;
 
   @IsOptional()
-  @IsString()
-  status?: string;
+  @IsInt()
+  @Min(15)
+  minDurationMinutes?: number;
 
   @IsOptional()
-  @IsArray()
-  @IsString({ each: true })
-  images?: string[];
+  @IsInt()
+  @Min(15)
+  durationStepMinutes?: number;
+
+  @IsOptional()
+  @IsString()
+  status?: string;
 
   @IsOptional()
   @IsUUID()
