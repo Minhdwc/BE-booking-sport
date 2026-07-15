@@ -4,6 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { Response } from 'express';
 import {
   PaymentGatewayService,
@@ -11,6 +12,7 @@ import {
 } from '@/infrastructure/payment/payment-gateway.service';
 import { QueueService } from '@/infrastructure/queue/queue.service';
 import { SocketGateway } from '@/infrastructure/socket/socket.gateway';
+import { getPagination, PaginationQueryDto, toPaginatedResult } from '@/common/dto/pagination.dto';
 import { JwtPayloadReturn } from '@/utils/jwt.util';
 import { CreatePaymentDto, UpdatePaymentDto } from './payments.dto';
 import { PaymentsRepository } from './payments.repository';
@@ -24,23 +26,28 @@ export class PaymentsService {
     private readonly socketGateway: SocketGateway,
   ) {}
 
-  async findAll(user: JwtPayloadReturn) {
-    if (user.role === 'admin') {
-      return this.paymentsRepository.findAll();
-    }
+  async findAll(user: JwtPayloadReturn, query: PaginationQueryDto = {}) {
+    const { page, limit, skip } = getPagination(query);
+    let where: Prisma.PaymentWhereInput | undefined;
 
-    if (user.role === 'staff') {
+    if (user.role === 'admin') {
+      where = undefined;
+    } else if (user.role === 'staff') {
       const ownedVenueIds = await this.paymentsRepository.findOwnedVenueIds(user.id);
       if (ownedVenueIds.length === 0) {
         throw new ForbiddenException('Tài khoản chưa được gán sân');
       }
-
-      return this.paymentsRepository.findAll({
-        booking: { field: { venueId: { in: ownedVenueIds } } },
-      });
+      where = { booking: { field: { venueId: { in: ownedVenueIds } } } };
+    } else {
+      where = { booking: { userId: user.id } };
     }
 
-    return this.paymentsRepository.findAll({ booking: { userId: user.id } });
+    const [data, total] = await Promise.all([
+      this.paymentsRepository.findAll(where, skip, limit),
+      this.paymentsRepository.count(where),
+    ]);
+
+    return toPaginatedResult(data, total, page, limit);
   }
 
   async findOne(id: string, user: JwtPayloadReturn) {
@@ -84,6 +91,8 @@ export class PaymentsService {
       throw new ForbiddenException('Bạn chỉ được tạo thanh toán của mình');
     }
 
+    let method = dto.method ?? 'bank_transfer';
+
     if (dto.venuePaymentAccountId) {
       const account = await this.paymentsRepository.findVenuePaymentAccountById(
         dto.venuePaymentAccountId,
@@ -94,12 +103,13 @@ export class PaymentsService {
       if (!account.isActive) {
         throw new BadRequestException('Tài khoản thanh toán đang không hoạt động');
       }
+      method = account.paymentMethod.code;
     }
 
     return this.paymentsRepository.create({
       bookingId: dto.bookingId,
       amount: booking.field.price,
-      method: dto.method ?? 'bank_transfer',
+      method,
       status: user.role === 'user' ? 'pending' : (dto.status ?? 'pending'),
       venuePaymentAccountId: dto.venuePaymentAccountId,
     });
@@ -113,6 +123,8 @@ export class PaymentsService {
     const existing = await this.findOne(id, user);
     const oldStatus = existing.status;
 
+    let methodFromAccount: string | undefined;
+
     if (data.venuePaymentAccountId) {
       const account = await this.paymentsRepository.findVenuePaymentAccountById(
         data.venuePaymentAccountId,
@@ -120,17 +132,16 @@ export class PaymentsService {
       if (!account || account.venueId !== existing.booking.field.venueId) {
         throw new BadRequestException('Tài khoản thanh toán không thuộc venue của booking');
       }
+      methodFromAccount = account.paymentMethod.code;
     }
 
     const payment = await this.paymentsRepository.update(id, {
-      ...(data.bookingId !== undefined ? { bookingId: data.bookingId } : {}),
-      ...(data.method !== undefined ? { method: data.method } : {}),
-      ...(data.status !== undefined ? { status: data.status } : {}),
-      ...(data.venuePaymentAccountId !== undefined
-        ? { venuePaymentAccountId: data.venuePaymentAccountId }
-        : {}),
-      ...(data.transactionCode !== undefined ? { transactionCode: data.transactionCode } : {}),
-      ...(data.status === 'success' ? { paidAt: existing.paidAt ?? new Date() } : {}),
+      ...(data.bookingId && { bookingId: data.bookingId }),
+      ...(methodFromAccount && { method: methodFromAccount }),
+      ...(data.status && { status: data.status }),
+      ...(data.venuePaymentAccountId && { venuePaymentAccountId: data.venuePaymentAccountId }),
+      ...(data.transactionCode && { transactionCode: data.transactionCode }),
+      ...(data.status === 'success' && { paidAt: existing.paidAt ?? new Date() }),
     });
 
     if (data.status && data.status !== oldStatus) {

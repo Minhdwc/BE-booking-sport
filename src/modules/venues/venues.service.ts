@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { S3Service } from '@/infrastructure/aws/s3.service';
+import { getPagination, PaginationQueryDto, toPaginatedResult } from '@/common/dto/pagination.dto';
 import { JwtPayloadReturn } from '@/utils/jwt.util';
 import { DTOCreateVenue, DTOUpdateVenue } from './venues.dto';
 import { VenuesRepository } from './venues.repository';
@@ -17,16 +18,15 @@ export class VenuesService {
     private readonly s3Service: S3Service,
   ) {}
 
-  async findAll(user?: JwtPayloadReturn, search?: string, pageParam?: string, limitParam?: string) {
-    const limit = Number(limitParam) || 10;
-    const page = Number(pageParam) || 1;
-
+  async findAll(user?: JwtPayloadReturn, query: PaginationQueryDto = {}) {
+    const { page, limit, skip } = getPagination(query);
     const where: Prisma.VenueWhereInput = {};
 
     if (user && user.role === 'staff') {
       where.venueOwners = { some: { userId: user.id } };
     }
 
+    const search = query.search?.trim();
     if (search) {
       where.OR = [
         { name: { contains: search, mode: 'insensitive' } },
@@ -35,11 +35,12 @@ export class VenuesService {
       ];
     }
 
-    return this.venuesRepository.findMany({
-      where,
-      skip: (page - 1) * limit,
-      take: limit,
-    });
+    const [data, total] = await Promise.all([
+      this.venuesRepository.findAll(where, skip, limit),
+      this.venuesRepository.count(where),
+    ]);
+
+    return toPaginatedResult(data, total, page, limit);
   }
 
   async findOne(id: string) {

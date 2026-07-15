@@ -1,5 +1,6 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { getPagination, PaginationQueryDto, toPaginatedResult } from '@/common/dto/pagination.dto';
 import { JwtPayloadReturn } from '@/utils/jwt.util';
 import { AuditLogsRepository } from './audit-logs.repository';
 
@@ -7,10 +8,8 @@ import { AuditLogsRepository } from './audit-logs.repository';
 export class AuditLogsService {
   constructor(private readonly auditLogsRepository: AuditLogsRepository) {}
 
-  async findAll(user: JwtPayloadReturn, pageParam?: string, limitParam?: string) {
-    const limit = Number(limitParam) || 20;
-    const page = Number(pageParam) || 1;
-
+  async findAll(user: JwtPayloadReturn, query: PaginationQueryDto = {}) {
+    const { page, limit, skip } = getPagination(query);
     const where: Prisma.AuditLogWhereInput = {};
 
     if (user.role === 'staff') {
@@ -36,6 +35,11 @@ export class AuditLogsService {
       throw new ForbiddenException('Bạn không có quyền xem audit logs');
     }
 
-    return this.auditLogsRepository.findAll(where, page, limit);
+    const [data, total] = await Promise.all([
+      this.auditLogsRepository.findAll(where, skip, limit),
+      this.auditLogsRepository.count(where),
+    ]);
+
+    return toPaginatedResult(data, total, page, limit);
   }
 }

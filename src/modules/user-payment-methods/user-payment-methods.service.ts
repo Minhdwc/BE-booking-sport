@@ -1,4 +1,5 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { getPagination, PaginationQueryDto, toPaginatedResult } from '@/common/dto/pagination.dto';
 import { JwtPayloadReturn } from '@/utils/jwt.util';
 import { CreateUserPaymentMethodDto, UpdateUserPaymentMethodDto } from './user-payment-methods.dto';
 import { UserPaymentMethodsRepository } from './user-payment-methods.repository';
@@ -7,8 +8,14 @@ import { UserPaymentMethodsRepository } from './user-payment-methods.repository'
 export class UserPaymentMethodsService {
   constructor(private readonly repository: UserPaymentMethodsRepository) {}
 
-  findAll(user: JwtPayloadReturn) {
-    return this.repository.findAll({ userId: user.id });
+  async findAll(user: JwtPayloadReturn, query: PaginationQueryDto = {}) {
+    const { page, limit, skip } = getPagination(query);
+    const where = { userId: user.id };
+    const [data, total] = await Promise.all([
+      this.repository.findAll(where, skip, limit),
+      this.repository.count(where),
+    ]);
+    return toPaginatedResult(data, total, page, limit);
   }
 
   async findOne(id: string, user: JwtPayloadReturn) {

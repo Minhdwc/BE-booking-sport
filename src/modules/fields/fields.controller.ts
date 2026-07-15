@@ -19,7 +19,12 @@ import { Roles } from '@/common/decorators/roles.decorator';
 import { RolesGuard } from '@/common/guards';
 import { JwtPayloadReturn } from '@/utils/jwt.util';
 import { FieldsService } from './fields.service';
-import { CreateFieldDto, FieldAvailabilityQueryDto, UpdateFieldDto } from './fields.dto';
+import {
+  CreateFieldDto,
+  FieldAvailabilityQueryDto,
+  FindAllFieldsQueryDto,
+  UpdateFieldDto,
+} from './fields.dto';
 
 @Controller('fields')
 export class FieldsController {
@@ -27,8 +32,8 @@ export class FieldsController {
 
   @Public()
   @Get()
-  findAll(@CurrentUser() user?: JwtPayloadReturn) {
-    return this.fieldsService.findAll(user);
+  findAll(@Query() query: FindAllFieldsQueryDto, @CurrentUser() user?: JwtPayloadReturn) {
+    return this.fieldsService.findAll(user, query);
   }
 
   @Public()

@@ -5,11 +5,17 @@ import { PrismaService } from '@/database/prisma.service';
 export class NotificationsRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  findAll(userId: string) {
+  findAll(userId: string, skip?: number | 0, take?: number | 10) {
     return this.prisma.notification.findMany({
       where: { userId },
+      skip,
+      take,
       orderBy: { createdAt: 'desc' },
     });
+  }
+
+  count(userId: string) {
+    return this.prisma.notification.count({ where: { userId } });
   }
 
   countUnread(userId: string) {

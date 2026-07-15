@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { getPagination, PaginationQueryDto, toPaginatedResult } from '@/common/dto/pagination.dto';
 import { SocketGateway } from '@/infrastructure/socket/socket.gateway';
 import { NotificationsRepository } from './notifications.repository';
 
@@ -9,8 +10,13 @@ export class NotificationsService {
     private readonly socket: SocketGateway,
   ) {}
 
-  findAll(userId: string) {
-    return this.notificationsRepository.findAll(userId);
+  async findAll(userId: string, query: PaginationQueryDto = {}) {
+    const { page, limit, skip } = getPagination(query);
+    const [data, total] = await Promise.all([
+      this.notificationsRepository.findAll(userId, skip, limit),
+      this.notificationsRepository.count(userId),
+    ]);
+    return toPaginatedResult(data, total, page, limit);
   }
 
   async countUnread(userId: string): Promise<number> {

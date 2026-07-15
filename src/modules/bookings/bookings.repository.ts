@@ -2,33 +2,46 @@ import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '@/database/prisma.service';
 
-const BOOKING_INCLUDE = {
-  user: {
-    select: { id: true, name: true, email: true, phone: true },
-  },
-  field: {
-    include: { sport: true, venue: true },
-  },
-  timeslot: true,
-  payments: true,
-} as const;
-
 @Injectable()
 export class BookingsRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  findAll(where?: Prisma.BookingWhereInput) {
+  findAll(where?: Prisma.BookingWhereInput, skip?: number | 0, take?: number | 10) {
     return this.prisma.booking.findMany({
       where,
-      include: BOOKING_INCLUDE,
+      skip,
+      take,
+      include: {
+        user: {
+          select: { id: true, name: true, email: true, phone: true },
+        },
+        field: {
+          include: { sport: true, venue: true },
+        },
+        timeslot: true,
+        payments: true,
+      },
       orderBy: { createdAt: 'desc' },
     });
+  }
+
+  count(where?: Prisma.BookingWhereInput) {
+    return this.prisma.booking.count({ where });
   }
 
   findById(id: string) {
     return this.prisma.booking.findUnique({
       where: { id },
-      include: BOOKING_INCLUDE,
+      include: {
+        user: {
+          select: { id: true, name: true, email: true, phone: true },
+        },
+        field: {
+          include: { sport: true, venue: true },
+        },
+        timeslot: true,
+        payments: true,
+      },
     });
   }
 
@@ -61,7 +74,16 @@ export class BookingsRepository {
   create(data: Prisma.BookingUncheckedCreateInput) {
     return this.prisma.booking.create({
       data,
-      include: BOOKING_INCLUDE,
+      include: {
+        user: {
+          select: { id: true, name: true, email: true, phone: true },
+        },
+        field: {
+          include: { sport: true, venue: true },
+        },
+        timeslot: true,
+        payments: true,
+      },
     });
   }
 
@@ -69,7 +91,16 @@ export class BookingsRepository {
     return this.prisma.booking.update({
       where: { id },
       data: { status },
-      include: BOOKING_INCLUDE,
+      include: {
+        user: {
+          select: { id: true, name: true, email: true, phone: true },
+        },
+        field: {
+          include: { sport: true, venue: true },
+        },
+        timeslot: true,
+        payments: true,
+      },
     });
   }
 
@@ -77,7 +108,16 @@ export class BookingsRepository {
     return this.prisma.booking.update({
       where: { id },
       data: { status: 'cancelled', slotLock: null },
-      include: BOOKING_INCLUDE,
+      include: {
+        user: {
+          select: { id: true, name: true, email: true, phone: true },
+        },
+        field: {
+          include: { sport: true, venue: true },
+        },
+        timeslot: true,
+        payments: true,
+      },
     });
   }
 

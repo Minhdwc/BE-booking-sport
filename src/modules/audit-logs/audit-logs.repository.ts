@@ -27,12 +27,16 @@ export class AuditLogsRepository {
     });
   }
 
-  findAll(where: Prisma.AuditLogWhereInput, page: number, limit: number) {
+  findAll(where?: Prisma.AuditLogWhereInput, skip?: number | 0, take?: number | 10) {
     return this.prisma.auditLog.findMany({
       where,
-      skip: (page - 1) * limit,
-      take: limit,
+      skip,
+      take,
       orderBy: { createdAt: 'desc' },
     });
+  }
+
+  count(where?: Prisma.AuditLogWhereInput) {
+    return this.prisma.auditLog.count({ where });
   }
 }

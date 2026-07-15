@@ -5,8 +5,10 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { QueueService } from '@/infrastructure/queue/queue.service';
 import { SocketGateway } from '@/infrastructure/socket/socket.gateway';
+import { getPagination, PaginationQueryDto, toPaginatedResult } from '@/common/dto/pagination.dto';
 import { JwtPayloadReturn } from '@/utils/jwt.util';
 import { BookingsRepository } from './bookings.repository';
 
@@ -18,23 +20,40 @@ export class BookingsService {
     private readonly socketGateway: SocketGateway,
   ) {}
 
-  async findAll(user: JwtPayloadReturn) {
-    if (user.role === 'admin') {
-      return this.bookingsRepository.findAll();
-    }
+  async findAll(user: JwtPayloadReturn, query: PaginationQueryDto = {}) {
+    const { page, limit, skip } = getPagination(query);
+    let where: Prisma.BookingWhereInput | undefined;
 
-    if (user.role === 'staff') {
+    if (user.role === 'admin') {
+      where = undefined;
+    } else if (user.role === 'staff') {
       const ownedVenueIds = await this.bookingsRepository.findOwnedVenueIds(user.id);
       if (ownedVenueIds.length === 0) {
         throw new ForbiddenException('Tài khoản chưa được gán sân');
       }
-
-      return this.bookingsRepository.findAll({
-        field: { venueId: { in: ownedVenueIds } },
-      });
+      where = { field: { venueId: { in: ownedVenueIds } } };
+    } else {
+      where = { userId: user.id };
     }
 
-    return this.bookingsRepository.findAll({ userId: user.id });
+    const search = query.search?.trim();
+    if (search) {
+      where = {
+        ...where,
+        OR: [
+          { user: { name: { contains: search, mode: 'insensitive' } } },
+          { user: { email: { contains: search, mode: 'insensitive' } } },
+          { field: { name: { contains: search, mode: 'insensitive' } } },
+        ],
+      };
+    }
+
+    const [data, total] = await Promise.all([
+      this.bookingsRepository.findAll(where, skip, limit),
+      this.bookingsRepository.count(where),
+    ]);
+
+    return toPaginatedResult(data, total, page, limit);
   }
 
   async findOne(id: string, user: JwtPayloadReturn) {

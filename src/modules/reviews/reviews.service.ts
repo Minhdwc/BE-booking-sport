@@ -1,4 +1,5 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { getPagination, PaginationQueryDto, toPaginatedResult } from '@/common/dto/pagination.dto';
 import { JwtPayloadReturn } from '@/utils/jwt.util';
 import { ReviewsRepository } from './reviews.repository';
 
@@ -6,8 +7,13 @@ import { ReviewsRepository } from './reviews.repository';
 export class ReviewsService {
   constructor(private readonly reviewsRepository: ReviewsRepository) {}
 
-  findAll() {
-    return this.reviewsRepository.findAll();
+  async findAll(query: PaginationQueryDto = {}) {
+    const { page, limit, skip } = getPagination(query);
+    const [data, total] = await Promise.all([
+      this.reviewsRepository.findAll(undefined, skip, limit),
+      this.reviewsRepository.count(),
+    ]);
+    return toPaginatedResult(data, total, page, limit);
   }
 
   async findOne(id: string) {

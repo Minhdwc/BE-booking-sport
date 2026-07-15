@@ -1,6 +1,17 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { Public } from '@/common/decorators/public.decorator';
 import { Roles } from '@/common/decorators/roles.decorator';
+import { PaginationQueryDto } from '@/common/dto/pagination.dto';
 import { RolesGuard } from '@/common/guards';
 import { TimeslotsService } from './timeslots.service';
 import { CreateTimeslotDto, UpdateTimeslotDto } from './timeslots.dto';
@@ -11,8 +22,8 @@ export class TimeslotsController {
 
   @Public()
   @Get()
-  findAll() {
-    return this.timeslotsService.findAll();
+  findAll(@Query() query: PaginationQueryDto) {
+    return this.timeslotsService.findAll(query);
   }
 
   @Public()

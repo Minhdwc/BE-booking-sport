@@ -1,6 +1,17 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { CurrentUser } from '@/common/decorators/current-user.decorator';
 import { Roles } from '@/common/decorators/roles.decorator';
+import { PaginationQueryDto } from '@/common/dto/pagination.dto';
 import { RolesGuard } from '@/common/guards';
 import { JwtPayloadReturn } from '@/utils/jwt.util';
 import { BookingsService } from './bookings.service';
@@ -11,8 +22,8 @@ export class BookingsController {
   constructor(private readonly bookingsService: BookingsService) {}
 
   @Get()
-  findAll(@CurrentUser() user: JwtPayloadReturn) {
-    return this.bookingsService.findAll(user);
+  findAll(@CurrentUser() user: JwtPayloadReturn, @Query() query: PaginationQueryDto) {
+    return this.bookingsService.findAll(user, query);
   }
 
   @Get(':id')
