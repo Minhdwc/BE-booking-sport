@@ -6,9 +6,11 @@ import { PrismaService } from '@/database/prisma.service';
 export class PaymentsRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  findAll(where?: Prisma.PaymentWhereInput) {
+  findAll(where?: Prisma.PaymentWhereInput, skip?: number | 0, take?: number | 10) {
     return this.prisma.payment.findMany({
       where,
+      skip,
+      take,
       include: {
         booking: {
           include: {
@@ -20,6 +22,10 @@ export class PaymentsRepository {
       },
       orderBy: { createdAt: 'desc' },
     });
+  }
+
+  count(where?: Prisma.PaymentWhereInput) {
+    return this.prisma.payment.count({ where });
   }
 
   findById(id: string) {
@@ -53,7 +59,10 @@ export class PaymentsRepository {
   }
 
   findVenuePaymentAccountById(id: string) {
-    return this.prisma.venuePaymentAccount.findUnique({ where: { id } });
+    return this.prisma.venuePaymentAccount.findUnique({
+      where: { id },
+      include: { paymentMethod: true },
+    });
   }
 
   create(data: Prisma.PaymentUncheckedCreateInput) {

@@ -16,6 +16,7 @@ import { memoryStorage } from 'multer';
 import { CurrentUser } from '@/common/decorators/current-user.decorator';
 import { Public } from '@/common/decorators/public.decorator';
 import { Roles } from '@/common/decorators/roles.decorator';
+import { PaginationQueryDto } from '@/common/dto/pagination.dto';
 import { RolesGuard } from '@/common/guards';
 import { JwtPayloadReturn } from '@/utils/jwt.util';
 import { DTOAddVenueOwner, DTOCreateVenue, DTOUpdateVenue } from './venues.dto';
@@ -27,13 +28,8 @@ export class VenuesController {
 
   @Public()
   @Get()
-  findAll(
-    @Query('search') search?: string,
-    @Query('page') pageParam?: string,
-    @Query('limit') limitParam?: string,
-    @CurrentUser() user?: JwtPayloadReturn,
-  ) {
-    return this.venuesService.findAll(user, search, pageParam, limitParam);
+  findAll(@Query() query: PaginationQueryDto, @CurrentUser() user?: JwtPayloadReturn) {
+    return this.venuesService.findAll(user, query);
   }
 
   @Get(':id/owners')

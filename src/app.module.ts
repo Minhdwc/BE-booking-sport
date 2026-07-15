@@ -16,6 +16,7 @@ import { BookingsModule } from './modules/bookings/bookings.module';
 import { FieldsModule } from './modules/fields/fields.module';
 import { HealthModule } from './modules/health/health.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
+import { PaymentMethodsModule } from './modules/payment-methods/payment-methods.module';
 import { PaymentsModule } from './modules/payments/payments.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { ReviewsModule } from './modules/reviews/reviews.module';
@@ -43,6 +44,7 @@ import { VenuesModule } from './modules/venues/venues.module';
     AccountModule,
     UsersModule,
     SportsModule,
+    PaymentMethodsModule,
     VenuesModule,
     TimeslotsModule,
     FieldsModule,

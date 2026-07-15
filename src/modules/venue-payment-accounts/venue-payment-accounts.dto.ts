@@ -1,11 +1,18 @@
-import { IsBoolean, IsIn, IsNotEmpty, IsOptional, IsString, IsUUID } from 'class-validator';
+import { IsBoolean, IsNotEmpty, IsOptional, IsString, IsUUID } from 'class-validator';
+import { PaginationQueryDto } from '@/common/dto/pagination.dto';
+
+export class FindAllVenuePaymentAccountsQueryDto extends PaginationQueryDto {
+  @IsOptional()
+  @IsUUID()
+  venueId?: string;
+}
 
 export class CreateVenuePaymentAccountDto {
   @IsUUID()
   venueId: string;
 
-  @IsIn(['bank_transfer', 'momo', 'zalopay', 'vnpay'])
-  type: 'bank_transfer' | 'momo' | 'zalopay' | 'vnpay';
+  @IsUUID()
+  paymentMethodId: string;
 
   @IsOptional()
   @IsString()
@@ -13,10 +20,12 @@ export class CreateVenuePaymentAccountDto {
 
   @IsOptional()
   @IsString()
+  @IsNotEmpty()
   accountNumber?: string;
 
   @IsOptional()
   @IsString()
+  @IsNotEmpty()
   accountName?: string;
 
   @IsOptional()
@@ -37,10 +46,6 @@ export class CreateVenuePaymentAccountDto {
 }
 
 export class UpdateVenuePaymentAccountDto {
-  @IsOptional()
-  @IsIn(['bank_transfer', 'momo', 'zalopay', 'vnpay'])
-  type?: 'bank_transfer' | 'momo' | 'zalopay' | 'vnpay';
-
   @IsOptional()
   @IsString()
   provider?: string | null;

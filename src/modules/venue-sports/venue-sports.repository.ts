@@ -6,15 +6,21 @@ import { PrismaService } from '@/database/prisma.service';
 export class VenueSportsRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  findAll(where?: Prisma.VenueSportWhereInput) {
+  findAll(where?: Prisma.VenueSportWhereInput, skip?: number | 0, take?: number | 10) {
     return this.prisma.venueSport.findMany({
       where,
+      skip,
+      take,
       include: {
         sport: true,
         venue: { select: { id: true, name: true, location: true } },
       },
       orderBy: { createdAt: 'desc' },
     });
+  }
+
+  count(where?: Prisma.VenueSportWhereInput) {
+    return this.prisma.venueSport.count({ where });
   }
 
   findById(id: string) {

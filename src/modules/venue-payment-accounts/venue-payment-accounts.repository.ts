@@ -6,14 +6,21 @@ import { PrismaService } from '@/database/prisma.service';
 export class VenuePaymentAccountsRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  findAll(where?: Prisma.VenuePaymentAccountWhereInput) {
+  findAll(where?: Prisma.VenuePaymentAccountWhereInput, skip?: number | 0, take?: number | 10) {
     return this.prisma.venuePaymentAccount.findMany({
       where,
+      skip,
+      take,
       include: {
         venue: { select: { id: true, name: true, location: true } },
+        paymentMethod: true,
       },
       orderBy: { createdAt: 'desc' },
     });
+  }
+
+  count(where?: Prisma.VenuePaymentAccountWhereInput) {
+    return this.prisma.venuePaymentAccount.count({ where });
   }
 
   findById(id: string) {
@@ -21,18 +28,23 @@ export class VenuePaymentAccountsRepository {
       where: { id },
       include: {
         venue: { select: { id: true, name: true, location: true } },
+        paymentMethod: true,
       },
     });
   }
 
-  findByVenueAndType(venueId: string, type: string) {
+  findByVenueAndMethod(venueId: string, paymentMethodId: string) {
     return this.prisma.venuePaymentAccount.findUnique({
-      where: { venueId_type: { venueId, type } },
+      where: { venueId_paymentMethodId: { venueId, paymentMethodId } },
     });
   }
 
   findVenueById(id: string) {
     return this.prisma.venue.findUnique({ where: { id } });
+  }
+
+  findPaymentMethodById(id: string) {
+    return this.prisma.paymentMethod.findUnique({ where: { id } });
   }
 
   async findOwnedVenueIds(userId: string) {
@@ -48,6 +60,7 @@ export class VenuePaymentAccountsRepository {
       data,
       include: {
         venue: { select: { id: true, name: true, location: true } },
+        paymentMethod: true,
       },
     });
   }
@@ -58,6 +71,7 @@ export class VenuePaymentAccountsRepository {
       data,
       include: {
         venue: { select: { id: true, name: true, location: true } },
+        paymentMethod: true,
       },
     });
   }

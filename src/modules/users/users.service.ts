@@ -1,14 +1,33 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
+import { getPagination, PaginationQueryDto, toPaginatedResult } from '@/common/dto/pagination.dto';
 import { UsersRepository } from './users.repository';
 
 @Injectable()
 export class UsersService {
   constructor(private readonly usersRepository: UsersRepository) {}
 
-  async findAll() {
-    const users = await this.usersRepository.findAll();
-    return users.map(({ password, ...user }) => user);
+  async findAll(query: PaginationQueryDto = {}) {
+    const { page, limit, skip } = getPagination(query);
+    const where: Prisma.UserWhereInput = {};
+    const search = query.search?.trim();
+    if (search) {
+      where.OR = [
+        { name: { contains: search, mode: 'insensitive' } },
+        { email: { contains: search, mode: 'insensitive' } },
+        { username: { contains: search, mode: 'insensitive' } },
+        { phone: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+
+    const [users, total] = await Promise.all([
+      this.usersRepository.findAll(where, skip, limit),
+      this.usersRepository.count(where),
+    ]);
+
+    const data = users.map(({ password, ...user }) => user);
+    return toPaginatedResult(data, total, page, limit);
   }
 
   async findOne(id: string) {

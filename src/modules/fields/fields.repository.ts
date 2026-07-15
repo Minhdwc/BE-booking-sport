@@ -6,9 +6,11 @@ import { PrismaService } from '@/database/prisma.service';
 export class FieldsRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  findAll(where?: Prisma.FieldWhereInput) {
+  findAll(where?: Prisma.FieldWhereInput, skip?: number | 0, take?: number | 10) {
     return this.prisma.field.findMany({
       where,
+      skip,
+      take,
       include: {
         sport: true,
         venue: true,
@@ -16,6 +18,10 @@ export class FieldsRepository {
       },
       orderBy: { createdAt: 'desc' },
     });
+  }
+
+  count(where?: Prisma.FieldWhereInput) {
+    return this.prisma.field.count({ where });
   }
 
   findById(id: string) {

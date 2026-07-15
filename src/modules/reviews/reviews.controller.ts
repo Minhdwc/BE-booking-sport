@@ -1,6 +1,7 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { CurrentUser } from '@/common/decorators/current-user.decorator';
 import { Public } from '@/common/decorators/public.decorator';
+import { PaginationQueryDto } from '@/common/dto/pagination.dto';
 import { JwtPayloadReturn } from '@/utils/jwt.util';
 import { ReviewsService } from './reviews.service';
 import { CreateReviewDto, UpdateReviewDto } from './reviews.dto';
@@ -11,8 +12,8 @@ export class ReviewsController {
 
   @Public()
   @Get()
-  findAll() {
-    return this.reviewsService.findAll();
+  findAll(@Query() query: PaginationQueryDto) {
+    return this.reviewsService.findAll(query);
   }
 
   @Public()

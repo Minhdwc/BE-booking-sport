@@ -19,6 +19,7 @@ import { RolesGuard } from '@/common/guards';
 import { JwtPayloadReturn } from '@/utils/jwt.util';
 import {
   CreateVenuePaymentAccountDto,
+  FindAllVenuePaymentAccountsQueryDto,
   UpdateVenuePaymentAccountDto,
 } from './venue-payment-accounts.dto';
 import { VenuePaymentAccountsService } from './venue-payment-accounts.service';
@@ -28,8 +29,11 @@ export class VenuePaymentAccountsController {
   constructor(private readonly service: VenuePaymentAccountsService) {}
 
   @Get()
-  findAll(@CurrentUser() user: JwtPayloadReturn) {
-    return this.service.findAll(user);
+  findAll(
+    @CurrentUser() user: JwtPayloadReturn,
+    @Query() query: FindAllVenuePaymentAccountsQueryDto,
+  ) {
+    return this.service.findAll(user, query);
   }
 
   @Get(':id')

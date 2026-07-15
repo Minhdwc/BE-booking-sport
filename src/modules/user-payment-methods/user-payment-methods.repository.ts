@@ -6,11 +6,17 @@ import { PrismaService } from '@/database/prisma.service';
 export class UserPaymentMethodsRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  findAll(where?: Prisma.UserPaymentMethodWhereInput) {
+  findAll(where?: Prisma.UserPaymentMethodWhereInput, skip?: number | 0, take?: number | 10) {
     return this.prisma.userPaymentMethod.findMany({
       where,
+      skip,
+      take,
       orderBy: [{ isDefault: 'desc' }, { createdAt: 'desc' }],
     });
+  }
+
+  count(where?: Prisma.UserPaymentMethodWhereInput) {
+    return this.prisma.userPaymentMethod.count({ where });
   }
 
   findById(id: string) {

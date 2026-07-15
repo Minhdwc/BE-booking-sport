@@ -9,6 +9,13 @@ import {
   MaxLength,
   Min,
 } from 'class-validator';
+import { PaginationQueryDto } from '@/common/dto/pagination.dto';
+
+export class FindAllFieldsQueryDto extends PaginationQueryDto {
+  @IsOptional()
+  @IsUUID()
+  venueId?: string;
+}
 
 export class FieldAvailabilityQueryDto {
   @IsDateString()

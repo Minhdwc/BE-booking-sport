@@ -148,6 +148,19 @@ model UserPaymentMethod {
   @@map("user_payment_methods")
 }
 
+model PaymentMethod {
+  id          String                @id @default(uuid())
+  code        String                @unique
+  name        String
+  description String?
+  isActive    Boolean               @default(true) @map("is_active")
+  createdAt   DateTime              @default(now()) @map("created_at")
+  updatedAt   DateTime              @updatedAt @map("updated_at")
+  accounts    VenuePaymentAccount[]
+
+  @@map("payment_methods")
+}
+
 model User {
   id             String              @id @default(uuid())
   name           String
@@ -170,22 +183,23 @@ model User {
 }
 
 model VenuePaymentAccount {
-  id            String    @id @default(uuid())
-  venueId       String    @map("venue_id")
-  type          String    @default("bank_transfer") // bank_transfer, momo, zalopay, vnpay
-  provider      String?
-  accountNumber String?
-  accountName   String?
-  bankCode      String?
-  bankName      String?
-  qrCodeUrl     String?
-  isActive      Boolean   @default(true) @map("is_active")
-  createdAt     DateTime  @default(now()) @map("created_at")
-  updatedAt     DateTime  @updatedAt @map("updated_at")
-  venue         Venue     @relation(fields: [venueId], references: [id], onDelete: Cascade)
-  payments      Payment[]
+  id              String        @id @default(uuid())
+  venueId         String        @map("venue_id")
+  paymentMethodId String        @map("payment_method_id")
+  provider        String?
+  accountNumber   String?
+  accountName     String?
+  bankCode        String?
+  bankName        String?
+  qrCodeUrl       String?
+  isActive        Boolean       @default(true) @map("is_active")
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+  venue           Venue         @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  paymentMethod   PaymentMethod @relation(fields: [paymentMethodId], references: [id], onDelete: Restrict)
+  payments        Payment[]
 
-  @@unique([venueId, type])
+  @@unique([venueId, paymentMethodId])
   @@map("venue_payment_accounts")
 }
 

@@ -6,11 +6,11 @@ import { PrismaService } from '@/database/prisma.service';
 export class VenuesRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  findMany(params: { where: Prisma.VenueWhereInput; skip: number; take: number }) {
+  findAll(where?: Prisma.VenueWhereInput, skip?: number | 0, take?: number | 10) {
     return this.prisma.venue.findMany({
-      where: params.where,
-      skip: params.skip,
-      take: params.take,
+      where,
+      skip,
+      take,
       orderBy: { createdAt: 'desc' },
       include: {
         fields: {
@@ -22,6 +22,10 @@ export class VenuesRepository {
         },
       },
     });
+  }
+
+  count(where?: Prisma.VenueWhereInput) {
+    return this.prisma.venue.count({ where });
   }
 
   findById(id: string) {

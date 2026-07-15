@@ -4,9 +4,11 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
+import { getPagination, toPaginatedResult } from '@/common/dto/pagination.dto';
 import { S3Service } from '@/infrastructure/aws/s3.service';
 import { JwtPayloadReturn } from '@/utils/jwt.util';
-import { CreateFieldDto, UpdateFieldDto } from './fields.dto';
+import { CreateFieldDto, FindAllFieldsQueryDto, UpdateFieldDto } from './fields.dto';
 import { FieldsRepository } from './fields.repository';
 
 @Injectable()
@@ -16,21 +18,46 @@ export class FieldsService {
     private readonly s3Service: S3Service,
   ) {}
 
-  async findAll(user?: JwtPayloadReturn) {
-    if (user?.role === 'admin') {
-      return this.fieldsRepository.findAll();
-    }
+  async findAll(user?: JwtPayloadReturn, query: FindAllFieldsQueryDto = {}) {
+    const { page, limit, skip } = getPagination(query);
+    const where: Prisma.FieldWhereInput = {};
 
-    if (user && user.role === 'staff') {
-      const ownedVenueIds = await this.fieldsRepository.findOwnedVenueIds(user.id);
+    const ownedVenueIds =
+      user?.role === 'staff' ? await this.fieldsRepository.findOwnedVenueIds(user.id) : undefined;
+
+    if (ownedVenueIds) {
       if (ownedVenueIds.length === 0) {
         throw new ForbiddenException('Tài khoản chưa được gán sân');
       }
-
-      return this.fieldsRepository.findAll({ venueId: { in: ownedVenueIds } });
+      if (query.venueId && !ownedVenueIds.includes(query.venueId)) {
+        throw new ForbiddenException('Bạn chỉ được xem field thuộc sân của mình');
+      }
     }
 
-    return this.fieldsRepository.findAll({ status: 'active' });
+    if (query.venueId) {
+      where.venueId = query.venueId;
+    } else if (ownedVenueIds) {
+      where.venueId = { in: ownedVenueIds };
+    }
+
+    if (!user || user.role === 'user') {
+      where.status = 'active';
+    }
+
+    const search = query.search?.trim();
+    if (search) {
+      where.OR = [
+        { name: { contains: search, mode: 'insensitive' } },
+        { description: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+
+    const [data, total] = await Promise.all([
+      this.fieldsRepository.findAll(where, skip, limit),
+      this.fieldsRepository.count(where),
+    ]);
+
+    return toPaginatedResult(data, total, page, limit);
   }
 
   async findOne(id: string, user?: JwtPayloadReturn) {

@@ -6,8 +6,17 @@ import { PrismaService } from '@/database/prisma.service';
 export class UsersRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  findAll() {
-    return this.prisma.user.findMany({ orderBy: { createdAt: 'desc' } });
+  findAll(where?: Prisma.UserWhereInput, skip?: number | 0, take?: number | 10) {
+    return this.prisma.user.findMany({
+      where,
+      skip,
+      take,
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  count(where?: Prisma.UserWhereInput) {
+    return this.prisma.user.count({ where });
   }
 
   findById(id: string) {

@@ -1,12 +1,18 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { getPagination, PaginationQueryDto, toPaginatedResult } from '@/common/dto/pagination.dto';
 import { TimeslotsRepository } from './timeslots.repository';
 
 @Injectable()
 export class TimeslotsService {
   constructor(private readonly timeslotsRepository: TimeslotsRepository) {}
 
-  findAll() {
-    return this.timeslotsRepository.findAll();
+  async findAll(query: PaginationQueryDto = {}) {
+    const { page, limit, skip } = getPagination(query);
+    const [data, total] = await Promise.all([
+      this.timeslotsRepository.findAll(skip, limit),
+      this.timeslotsRepository.count(),
+    ]);
+    return toPaginatedResult(data, total, page, limit);
   }
 
   async findOne(id: string) {

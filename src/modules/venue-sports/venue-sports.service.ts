@@ -4,36 +4,52 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
+import { getPagination, toPaginatedResult } from '@/common/dto/pagination.dto';
 import { JwtPayloadReturn } from '@/utils/jwt.util';
-import { CreateVenueSportDto, UpdateVenueSportDto } from './venue-sports.dto';
+import {
+  CreateVenueSportDto,
+  FindAllVenueSportsQueryDto,
+  UpdateVenueSportDto,
+} from './venue-sports.dto';
 import { VenueSportsRepository } from './venue-sports.repository';
 
 @Injectable()
 export class VenueSportsService {
   constructor(private readonly repository: VenueSportsRepository) {}
 
-  async findAll(user: JwtPayloadReturn, venueId?: string) {
-    if (user.role === 'admin') {
-      return this.repository.findAll(venueId ? { venueId } : undefined);
+  async findAll(user: JwtPayloadReturn, query: FindAllVenueSportsQueryDto = {}) {
+    const { page, limit, skip } = getPagination(query);
+    const { venueId, isActive } = query;
+
+    if (user.role !== 'admin' && user.role !== 'staff') {
+      throw new ForbiddenException('Không có quyền xem đăng ký bộ môn');
     }
 
-    if (user.role === 'staff') {
-      const ownedVenueIds = await this.repository.findOwnedVenueIds(user.id);
+    const ownedVenueIds =
+      user.role === 'staff' ? await this.repository.findOwnedVenueIds(user.id) : undefined;
+
+    if (ownedVenueIds) {
       if (ownedVenueIds.length === 0) {
         throw new ForbiddenException('Tài khoản chưa được gán sân');
       }
-
-      if (venueId) {
-        if (!ownedVenueIds.includes(venueId)) {
-          throw new ForbiddenException('Bạn chỉ được xem bộ môn thuộc sân của mình');
-        }
-        return this.repository.findAll({ venueId });
+      if (venueId && !ownedVenueIds.includes(venueId)) {
+        throw new ForbiddenException('Bạn chỉ được xem bộ môn thuộc sân của mình');
       }
-
-      return this.repository.findAll({ venueId: { in: ownedVenueIds } });
     }
 
-    throw new ForbiddenException('Không có quyền xem đăng ký bộ môn');
+    const where: Prisma.VenueSportWhereInput = {
+      ...(venueId && { venueId }),
+      ...(ownedVenueIds && { venueId: { in: ownedVenueIds } }),
+      ...(isActive !== undefined ? { isActive: isActive } : {}),
+    };
+
+    const [data, total] = await Promise.all([
+      this.repository.findAll(where, skip, limit),
+      this.repository.count(where),
+    ]);
+
+    return toPaginatedResult(data, total, page, limit);
   }
 
   async findOne(id: string, user: JwtPayloadReturn) {
@@ -83,7 +99,7 @@ export class VenueSportsService {
       venueId: dto.venueId,
       sportId: dto.sportId,
       description: dto.description,
-      isActive: dto.isActive ?? true,
+      isActive: dto.isActive || true,
     });
   }
 

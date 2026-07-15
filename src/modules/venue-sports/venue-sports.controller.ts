@@ -13,7 +13,11 @@ import { CurrentUser } from '@/common/decorators/current-user.decorator';
 import { Roles } from '@/common/decorators/roles.decorator';
 import { RolesGuard } from '@/common/guards';
 import { JwtPayloadReturn } from '@/utils/jwt.util';
-import { CreateVenueSportDto, UpdateVenueSportDto } from './venue-sports.dto';
+import {
+  CreateVenueSportDto,
+  FindAllVenueSportsQueryDto,
+  UpdateVenueSportDto,
+} from './venue-sports.dto';
 import { VenueSportsService } from './venue-sports.service';
 
 @Controller('venue-sports')
@@ -23,8 +27,8 @@ export class VenueSportsController {
   constructor(private readonly service: VenueSportsService) {}
 
   @Get()
-  findAll(@CurrentUser() user: JwtPayloadReturn, @Query('venueId') venueId?: string) {
-    return this.service.findAll(user, venueId);
+  findAll(@CurrentUser() user: JwtPayloadReturn, @Query() query: FindAllVenueSportsQueryDto) {
+    return this.service.findAll(user, query);
   }
 
   @Get(':id')

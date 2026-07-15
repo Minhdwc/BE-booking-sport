@@ -1,6 +1,17 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { Public } from '@/common/decorators/public.decorator';
 import { Roles } from '@/common/decorators/roles.decorator';
+import { PaginationQueryDto } from '@/common/dto/pagination.dto';
 import { RolesGuard } from '@/common/guards';
 import { CreateAmenityDto, UpdateAmenityDto } from './amenities.dto';
 import { AmenitiesService } from './amenities.service';
@@ -11,14 +22,14 @@ export class AmenitiesController {
 
   @Public()
   @Get()
-  findAll() {
-    return this.amenitiesService.findAll();
+  findAll(@Query() query: PaginationQueryDto) {
+    return this.amenitiesService.findAll(query);
   }
 
   @Public()
   @Get('venue/:venueId')
-  findAllVenueAmenities(@Param('venueId') venueId: string) {
-    return this.amenitiesService.findAllVenueAmenities(venueId);
+  findAllVenueAmenities(@Param('venueId') venueId: string, @Query() query: PaginationQueryDto) {
+    return this.amenitiesService.findAllVenueAmenities(venueId, query);
   }
 
   @Public()

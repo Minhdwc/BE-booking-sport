@@ -6,15 +6,30 @@ import { PrismaService } from '@/database/prisma.service';
 export class AmenitiesRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  findAll() {
-    return this.prisma.amenities.findMany({ orderBy: { createdAt: 'desc' } });
+  findAll(where?: Prisma.AmenitiesWhereInput, skip?: number | 0, take?: number | 10) {
+    return this.prisma.amenities.findMany({
+      where,
+      skip,
+      take,
+      orderBy: { createdAt: 'desc' },
+    });
   }
 
-  findAllVenueAmenities(venueId: string) {
+  count(where?: Prisma.AmenitiesWhereInput) {
+    return this.prisma.amenities.count({ where });
+  }
+
+  findAllVenueAmenities(venueId: string, skip?: number | 0, take?: number | 10) {
     return this.prisma.venueAmenities.findMany({
       where: { venueId },
+      skip,
+      take,
       include: { amenity: true, venue: true },
     });
+  }
+
+  countVenueAmenities(venueId: string) {
+    return this.prisma.venueAmenities.count({ where: { venueId } });
   }
 
   findById(id: string) {

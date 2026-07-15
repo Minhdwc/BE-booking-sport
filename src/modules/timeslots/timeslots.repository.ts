@@ -5,8 +5,16 @@ import { PrismaService } from '@/database/prisma.service';
 export class TimeslotsRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  findAll() {
-    return this.prisma.timeslot.findMany({ orderBy: { startTime: 'asc' } });
+  findAll(skip?: number | 0, take?: number | 10) {
+    return this.prisma.timeslot.findMany({
+      skip,
+      take,
+      orderBy: { startTime: 'asc' },
+    });
+  }
+
+  count() {
+    return this.prisma.timeslot.count();
   }
 
   findById(id: string) {

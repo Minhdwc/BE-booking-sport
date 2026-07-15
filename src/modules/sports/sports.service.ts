@@ -1,12 +1,26 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
+import { getPagination, PaginationQueryDto, toPaginatedResult } from '@/common/dto/pagination.dto';
 import { SportsRepository } from './sports.repository';
 
 @Injectable()
 export class SportsService {
   constructor(private readonly sportsRepository: SportsRepository) {}
 
-  findAll() {
-    return this.sportsRepository.findAll();
+  async findAll(query: PaginationQueryDto = {}) {
+    const { page, limit, skip } = getPagination(query);
+    const where: Prisma.SportWhereInput = {};
+    const search = query.search?.trim();
+    if (search) {
+      where.name = { contains: search, mode: 'insensitive' };
+    }
+
+    const [data, total] = await Promise.all([
+      this.sportsRepository.findAll(where, skip, limit),
+      this.sportsRepository.count(where),
+    ]);
+
+    return toPaginatedResult(data, total, page, limit);
   }
 
   async findOne(id: string) {

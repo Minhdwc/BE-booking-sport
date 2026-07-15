@@ -2,6 +2,7 @@ import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, Res } fr
 import { Request, Response } from 'express';
 import { Public } from '@/common/decorators/public.decorator';
 import { CurrentUser } from '@/common/decorators/current-user.decorator';
+import { PaginationQueryDto } from '@/common/dto/pagination.dto';
 import { JwtPayloadReturn } from '@/utils/jwt.util';
 import { PaymentsService } from './payments.service';
 import { CreatePaymentDto, UpdatePaymentDto } from './payments.dto';
@@ -11,8 +12,8 @@ export class PaymentsController {
   constructor(private readonly paymentsService: PaymentsService) {}
 
   @Get()
-  findAll(@CurrentUser() user: JwtPayloadReturn) {
-    return this.paymentsService.findAll(user);
+  findAll(@CurrentUser() user: JwtPayloadReturn, @Query() query: PaginationQueryDto) {
+    return this.paymentsService.findAll(user, query);
   }
 
   @Public()
