@@ -29,7 +29,7 @@ export class BookingsService {
     } else if (user.role === 'staff') {
       const ownedVenueIds = await this.bookingsRepository.findOwnedVenueIds(user.id);
       if (ownedVenueIds.length === 0) {
-        throw new ForbiddenException('Tài khoản chưa được gán sân');
+        return toPaginatedResult([], 0, page, limit);
       }
       where = { field: { venueId: { in: ownedVenueIds } } };
     } else {

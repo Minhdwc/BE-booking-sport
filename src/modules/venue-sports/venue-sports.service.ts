@@ -31,7 +31,7 @@ export class VenueSportsService {
 
     if (ownedVenueIds) {
       if (ownedVenueIds.length === 0) {
-        throw new ForbiddenException('Tài khoản chưa được gán sân');
+        return toPaginatedResult([], 0, page, limit);
       }
       if (venueId && !ownedVenueIds.includes(venueId)) {
         throw new ForbiddenException('Bạn chỉ được xem bộ môn thuộc sân của mình');
@@ -39,10 +39,14 @@ export class VenueSportsService {
     }
 
     const where: Prisma.VenueSportWhereInput = {
-      ...(venueId && { venueId }),
-      ...(ownedVenueIds && { venueId: { in: ownedVenueIds } }),
-      ...(isActive !== undefined ? { isActive: isActive } : {}),
+      ...(isActive !== undefined ? { isActive } : {}),
     };
+
+    if (venueId) {
+      where.venueId = venueId;
+    } else if (ownedVenueIds) {
+      where.venueId = { in: ownedVenueIds };
+    }
 
     const [data, total] = await Promise.all([
       this.repository.findAll(where, skip, limit),
