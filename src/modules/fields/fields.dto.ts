@@ -5,7 +5,6 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
-  IsUUID,
   MaxLength,
   Min,
 } from 'class-validator';
@@ -13,7 +12,7 @@ import { PaginationQueryDto } from '@/common/dto/pagination.dto';
 
 export class FindAllFieldsQueryDto extends PaginationQueryDto {
   @IsOptional()
-  @IsUUID()
+  @IsString()
   venueId?: string;
 }
 
@@ -48,10 +47,10 @@ export class CreateFieldDto {
   @IsString()
   status?: string;
 
-  @IsUUID()
+  @IsString()
   sportId: string;
 
-  @IsUUID()
+  @IsString()
   venueId: string;
 }
 
@@ -86,10 +85,10 @@ export class UpdateFieldDto {
   status?: string;
 
   @IsOptional()
-  @IsUUID()
+  @IsString()
   sportId?: string;
 
   @IsOptional()
-  @IsUUID()
+  @IsString()
   venueId?: string;
 }

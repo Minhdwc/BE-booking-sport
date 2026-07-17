@@ -1,17 +1,17 @@
-import { IsBoolean, IsNotEmpty, IsOptional, IsString, IsUUID } from 'class-validator';
+import { IsBoolean, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 import { PaginationQueryDto } from '@/common/dto/pagination.dto';
 
 export class FindAllVenuePaymentAccountsQueryDto extends PaginationQueryDto {
   @IsOptional()
-  @IsUUID()
+  @IsString()
   venueId?: string;
 }
 
 export class CreateVenuePaymentAccountDto {
-  @IsUUID()
+  @IsString()
   venueId: string;
 
-  @IsUUID()
+  @IsString()
   paymentMethodId: string;
 
   @IsOptional()

@@ -135,15 +135,20 @@ export class VenuesService {
     }
     await this.findOne(id);
 
-    const uploaded = await this.s3Service.upload(file, 'venues');
-    const count = await this.venuesRepository.countVenueImages(id);
+    try {
+      const uploaded = await this.s3Service.upload(file, 'venues');
+      const count = await this.venuesRepository.countVenueImages(id);
 
-    return this.venuesRepository.createVenueImage({
-      venueId: id,
-      url: uploaded.url,
-      position: count,
-      isThumbnail: count === 0,
-    });
+      return this.venuesRepository.createVenueImage({
+        venueId: id,
+        url: uploaded.url,
+        position: count,
+        isThumbnail: count === 0,
+      });
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : 'Upload thất bại';
+      throw new BadRequestException(detail);
+    }
   }
 
   async removeImage(venueId: string, imageId: string, user: JwtPayloadReturn) {

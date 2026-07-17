@@ -31,17 +31,33 @@ export class S3Service {
     file: Express.Multer.File,
     folder = 'uploads',
   ): Promise<{ key: string; url: string }> {
+    if (!this.bucket) {
+      throw new Error('AWS_S3_BUCKET chưa được cấu hình');
+    }
+
     const ext = extname(file.originalname);
     const key = `${folder}/${randomUUID()}${ext}`;
 
-    await this.client.send(
-      new PutObjectCommand({
-        Bucket: this.bucket,
-        Key: key,
-        Body: file.buffer,
-        ContentType: file.mimetype,
-      }),
-    );
+    try {
+      await this.client.send(
+        new PutObjectCommand({
+          Bucket: this.bucket,
+          Key: key,
+          Body: file.buffer,
+          ContentType: file.mimetype,
+        }),
+      );
+    } catch (error) {
+      const aws = error as { name?: string; message?: string; Code?: string };
+      const detail =
+        aws.Code || aws.name
+          ? `${aws.Code || aws.name}: ${aws.message || 'Access denied'}`
+          : error instanceof Error
+            ? error.message
+            : String(error);
+      this.logger.error(`S3 upload failed: ${detail}`);
+      throw new Error(`Upload S3 thất bại (${detail})`);
+    }
 
     const url = this.getPublicUrl(key);
     this.logger.log(`Uploaded file to S3: ${key}`);

@@ -27,7 +27,7 @@ export class FieldsService {
 
     if (ownedVenueIds) {
       if (ownedVenueIds.length === 0) {
-        throw new ForbiddenException('Tài khoản chưa được gán sân');
+        return toPaginatedResult([], 0, page, limit);
       }
       if (query.venueId && !ownedVenueIds.includes(query.venueId)) {
         throw new ForbiddenException('Bạn chỉ được xem field thuộc sân của mình');
