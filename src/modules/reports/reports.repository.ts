@@ -28,6 +28,27 @@ export class ReportsRepository {
     ]);
   }
 
+  findSuccessfulPayments(paymentWhere: Prisma.PaymentWhereInput) {
+    return this.prisma.payment.findMany({
+      where: paymentWhere,
+      select: {
+        amount: true,
+        paidAt: true,
+        createdAt: true,
+        booking: {
+          select: {
+            field: {
+              select: {
+                sportId: true,
+                sport: { select: { id: true, name: true } },
+              },
+            },
+          },
+        },
+      },
+    });
+  }
+
   findFieldsByIds(ids: string[]) {
     return this.prisma.field.findMany({
       where: { id: { in: ids } },

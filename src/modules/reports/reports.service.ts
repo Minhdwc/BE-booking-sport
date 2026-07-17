@@ -48,12 +48,43 @@ export class ReportsService {
         : {}),
     };
 
-    const [bookingsByStatus, revenueAgg, topFieldsRaw] =
-      await this.reportsRepository.getSummaryData(bookingWhere, paymentWhere);
+    const [[bookingsByStatus, revenueAgg, topFieldsRaw], successfulPayments] = await Promise.all([
+      this.reportsRepository.getSummaryData(bookingWhere, paymentWhere),
+      this.reportsRepository.findSuccessfulPayments(paymentWhere),
+    ]);
 
     const fieldIds = topFieldsRaw.map((row) => row.fieldId);
     const fields = fieldIds.length ? await this.reportsRepository.findFieldsByIds(fieldIds) : [];
     const fieldMap = new Map(fields.map((field) => [field.id, field]));
+
+    const revenueByDayMap = new Map<string, number>();
+    const revenueBySportMap = new Map<string, { sportId: string; sportName: string; total: number }>();
+
+    for (const payment of successfulPayments) {
+      const daySource = payment.paidAt ?? payment.createdAt;
+      const dayKey = daySource.toISOString().slice(0, 10);
+      revenueByDayMap.set(dayKey, (revenueByDayMap.get(dayKey) ?? 0) + payment.amount);
+
+      const sport = payment.booking?.field?.sport;
+      if (sport) {
+        const current = revenueBySportMap.get(sport.id);
+        if (current) {
+          current.total += payment.amount;
+        } else {
+          revenueBySportMap.set(sport.id, {
+            sportId: sport.id,
+            sportName: sport.name,
+            total: payment.amount,
+          });
+        }
+      }
+    }
+
+    const revenueByDay = Array.from(revenueByDayMap.entries())
+      .map(([date, total]) => ({ date, total }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    const revenueBySport = Array.from(revenueBySportMap.values()).sort((a, b) => b.total - a.total);
 
     return {
       bookingsByStatus: bookingsByStatus.map((row) => ({
@@ -71,6 +102,8 @@ export class ReportsService {
         bookingCount: row._count._all,
         field: fieldMap.get(row.fieldId) ?? null,
       })),
+      revenueByDay,
+      revenueBySport,
     };
   }
 
