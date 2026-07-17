@@ -115,6 +115,42 @@ export class PaymentsService {
     });
   }
 
+  async getOrCreatePendingPayment(user: JwtPayloadReturn, bookingId: string) {
+    const booking = await this.paymentsRepository.findBookingById(bookingId);
+
+    if (!booking) {
+      throw new NotFoundException('Booking không tồn tại');
+    }
+
+    if (user.role === 'staff') {
+      throw new ForbiddenException('Staff không được tạo thanh toán');
+    }
+
+    if (user.role !== 'admin' && booking.userId !== user.id) {
+      throw new ForbiddenException('Bạn chỉ được tạo thanh toán của mình');
+    }
+
+    if (booking.status !== 'pending') {
+      throw new BadRequestException('Chỉ booking đang giữ chỗ (pending) mới được thanh toán');
+    }
+
+    if (booking.expiresAt && booking.expiresAt.getTime() <= Date.now()) {
+      throw new BadRequestException('Booking đã hết hạn giữ chỗ');
+    }
+
+    const existing = await this.paymentsRepository.findPendingPaymentByBooking(bookingId);
+    if (existing) {
+      return existing;
+    }
+
+    return this.paymentsRepository.create({
+      bookingId,
+      amount: booking.field.price,
+      method: 'vnpay',
+      status: 'pending',
+    });
+  }
+
   async update(id: string, user: JwtPayloadReturn, data: UpdatePaymentDto) {
     if (user.role === 'user') {
       throw new ForbiddenException('Bạn không có quyền cập nhật thanh toán');
@@ -224,7 +260,7 @@ export class PaymentsService {
     }
 
     await this.paymentsRepository.setStatus(paymentId, 'failed');
-    return res.redirect(`${frontendUrl}/payments?status=failed`);
+    return res.redirect(`${frontendUrl}/payments?status=failed&paymentId=${paymentId}`);
   }
 
   async handleVnpayIpn(query: Record<string, string>) {
@@ -291,6 +327,7 @@ export class PaymentsService {
     );
 
     await this.paymentsRepository.confirmBooking(payment.bookingId);
+    await this.queueService.cancelBookingExpiry(payment.bookingId);
 
     await this.paymentsRepository.createAuditLog({
       actorId: null,

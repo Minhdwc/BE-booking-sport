@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
+import * as querystring from 'querystring';
 
 export interface VnpayCreatePaymentParams {
   amount: number;
@@ -59,36 +60,49 @@ export class PaymentGatewayService {
       vnp_OrderType: 'other',
       vnp_Amount: String(params.amount * 100),
       vnp_ReturnUrl: params.returnUrl ?? this.returnUrl,
-      vnp_IpAddr: params.ipAddr,
+      vnp_IpAddr: this.normalizeIp(params.ipAddr),
       vnp_CreateDate: createDate,
       vnp_ExpireDate: expireDate,
     };
 
     const sortedParams = this.sortObject(vnpParams);
-    const signData = new URLSearchParams(sortedParams).toString().replace(/\+/g, '%20');
+    const signData = querystring.stringify(sortedParams, undefined, undefined, {
+      encodeURIComponent: (value) => value,
+    });
     const signature = this.createHmacSha512(this.hashSecret, signData);
-    sortedParams['vnp_SecureHash'] = signature;
+    sortedParams.vnp_SecureHash = signature;
 
-    return `${this.payUrl}?${new URLSearchParams(sortedParams).toString()}`;
+    return `${this.payUrl}?${querystring.stringify(sortedParams, undefined, undefined, {
+      encodeURIComponent: (value) => value,
+    })}`;
   }
 
   verifyReturnUrl(query: VnpayReturnParams): { isValid: boolean; isSuccess: boolean } {
-    const { vnp_SecureHash, ...params } = query;
+    const secureHash = query.vnp_SecureHash;
     const cleaned: Record<string, string> = {};
-    for (const [key, value] of Object.entries(params)) {
-      if (value !== undefined && value !== null && key !== 'vnp_SecureHashType') {
+
+    for (const [key, value] of Object.entries(query)) {
+      if (
+        value !== undefined &&
+        value !== null &&
+        key !== 'vnp_SecureHash' &&
+        key !== 'vnp_SecureHashType'
+      ) {
         cleaned[key] = String(value);
       }
     }
+
     const sortedParams = this.sortObject(cleaned);
-    const signData = new URLSearchParams(sortedParams).toString().replace(/\+/g, '%20');
+    const signData = querystring.stringify(sortedParams, undefined, undefined, {
+      encodeURIComponent: (value) => value,
+    });
     const expectedHash = this.createHmacSha512(this.hashSecret, signData);
 
-    const isValid = expectedHash === vnp_SecureHash;
-    const isSuccess = params.vnp_ResponseCode === '00' && params.vnp_TransactionStatus === '00';
+    const isValid = expectedHash === secureHash;
+    const isSuccess = query.vnp_ResponseCode === '00' && query.vnp_TransactionStatus === '00';
 
     this.logger.log(
-      `VNPay return: txnRef=${params.vnp_TxnRef} | valid=${isValid} | success=${isSuccess}`,
+      `VNPay return: txnRef=${query.vnp_TxnRef} | valid=${isValid} | success=${isSuccess}`,
     );
 
     return { isValid, isSuccess };
@@ -99,31 +113,50 @@ export class PaymentGatewayService {
   }
 
   getAmount(query: VnpayReturnParams): number {
-    return parseInt(query.vnp_Amount) / 100;
+    return parseInt(query.vnp_Amount, 10) / 100;
   }
 
   private createHmacSha512(secret: string, data: string): string {
     return crypto.createHmac('sha512', secret).update(Buffer.from(data, 'utf-8')).digest('hex');
   }
 
+  /** Official VNPay demo sortObject: encode values, spaces as `+`. */
   private sortObject(obj: Record<string, string>): Record<string, string> {
-    return Object.keys(obj)
-      .sort()
-      .reduce<Record<string, string>>((acc, key) => {
-        acc[key] = obj[key];
-        return acc;
-      }, {});
+    const sorted: Record<string, string> = {};
+    const keys = Object.keys(obj)
+      .filter((key) => obj[key] !== undefined && obj[key] !== null && obj[key] !== '')
+      .map((key) => encodeURIComponent(key))
+      .sort();
+
+    for (const encodedKey of keys) {
+      const originalKey = decodeURIComponent(encodedKey);
+      sorted[encodedKey] = encodeURIComponent(obj[originalKey]).replace(/%20/g, '+');
+    }
+
+    return sorted;
   }
 
+  private normalizeIp(ipAddr: string): string {
+    if (!ipAddr || ipAddr === '::1' || ipAddr === '::ffff:127.0.0.1') {
+      return '127.0.0.1';
+    }
+    if (ipAddr.startsWith('::ffff:')) {
+      return ipAddr.slice(7);
+    }
+    return ipAddr;
+  }
+
+  /** VNPay expects GMT+7 timestamps: yyyyMMddHHmmss */
   private formatDate(date: Date): string {
+    const vn = new Date(date.toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' }));
     const pad = (n: number) => String(n).padStart(2, '0');
     return (
-      String(date.getFullYear()) +
-      pad(date.getMonth() + 1) +
-      pad(date.getDate()) +
-      pad(date.getHours()) +
-      pad(date.getMinutes()) +
-      pad(date.getSeconds())
+      String(vn.getFullYear()) +
+      pad(vn.getMonth() + 1) +
+      pad(vn.getDate()) +
+      pad(vn.getHours()) +
+      pad(vn.getMinutes()) +
+      pad(vn.getSeconds())
     );
   }
 }

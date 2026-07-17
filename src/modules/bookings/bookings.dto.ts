@@ -1,10 +1,12 @@
-import { IsDateString, IsIn, IsUUID } from 'class-validator';
+import { IsDateString, IsIn, IsNotEmpty, IsString } from 'class-validator';
 
 export class CreateBookingDto {
-  @IsUUID()
+  @IsString()
+  @IsNotEmpty()
   fieldId: string;
 
-  @IsUUID()
+  @IsString()
+  @IsNotEmpty()
   timeslotId: string;
 
   @IsDateString()

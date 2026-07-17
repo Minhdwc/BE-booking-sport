@@ -6,13 +6,19 @@ import {
   BookingCancelledData,
   NewBookingOwnerData,
 } from '@/infrastructure/mail/mail.service';
-import { EMAIL_JOBS, NOTIFICATION_JOBS, QUEUE_NAMES } from './queue.constants';
+import {
+  BOOKING_JOBS,
+  EMAIL_JOBS,
+  NOTIFICATION_JOBS,
+  QUEUE_NAMES,
+} from './queue.constants';
 
 @Injectable()
 export class QueueService {
   constructor(
     @InjectQueue(QUEUE_NAMES.EMAIL) private readonly emailQueue: Queue,
     @InjectQueue(QUEUE_NAMES.NOTIFICATION) private readonly notificationQueue: Queue,
+    @InjectQueue(QUEUE_NAMES.BOOKING) private readonly bookingQueue: Queue,
   ) {}
 
   async sendBookingConfirmationEmail(to: string, payload: BookingConfirmationData) {
@@ -64,5 +70,25 @@ export class QueueService {
       { userId, title, message },
       { attempts: 3 },
     );
+  }
+
+  async scheduleBookingExpiry(bookingId: string, delayMs = 15 * 60 * 1000) {
+    await this.bookingQueue.add(
+      BOOKING_JOBS.EXPIRE,
+      { bookingId },
+      {
+        delay: delayMs,
+        jobId: `booking-expire-${bookingId}`,
+        removeOnComplete: true,
+        removeOnFail: true,
+      },
+    );
+  }
+
+  async cancelBookingExpiry(bookingId: string) {
+    const job = await this.bookingQueue.getJob(`booking-expire-${bookingId}`);
+    if (job) {
+      await job.remove();
+    }
   }
 }

@@ -1,6 +1,7 @@
 export const QUEUE_NAMES = {
   EMAIL: 'email',
   NOTIFICATION: 'notification',
+  BOOKING: 'booking',
 } as const;
 
 export const EMAIL_JOBS = {
@@ -13,4 +14,8 @@ export const EMAIL_JOBS = {
 
 export const NOTIFICATION_JOBS = {
   CREATE: 'create',
+} as const;
+
+export const BOOKING_JOBS = {
+  EXPIRE: 'expire',
 } as const;
