@@ -50,6 +50,14 @@ export class PaymentsController {
     return this.paymentsService.create(user, createPaymentDto);
   }
 
+  @Post('pending-for-booking/:bookingId')
+  getOrCreatePendingPayment(
+    @Param('bookingId') bookingId: string,
+    @CurrentUser() user: JwtPayloadReturn,
+  ) {
+    return this.paymentsService.getOrCreatePendingPayment(user, bookingId);
+  }
+
   @Post(':id/vnpay-url')
   createVnpayUrl(
     @Param('id') id: string,

@@ -118,6 +118,8 @@ export class BookingsService {
       throw new ConflictException('Khung giờ này đã được đặt');
     }
 
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+
     const booking = await this.bookingsRepository.create({
       userId: user.id,
       fieldId,
@@ -126,44 +128,18 @@ export class BookingsService {
       status: 'pending',
       slotLock: 'active',
       amount: bookingField.price,
+      expiresAt,
     });
+
+    await this.queueService.scheduleBookingExpiry(booking.id);
 
     const dateStr = booking.date.toISOString().split('T')[0];
-    const startTime = booking.timeslot.startTime.toISOString().substring(11, 16);
-    const endTime = booking.timeslot.endTime.toISOString().substring(11, 16);
-
-    await this.queueService.sendBookingConfirmationEmail(booking.user.email, {
-      name: booking.user.name,
-      fieldName: booking.field.name,
-      venueName: booking.field.venue.name,
-      date: dateStr,
-      startTime,
-      endTime,
-      amount: booking.field.price,
-      bookingId: booking.id,
-    });
-
-    await this.queueService.createNotification(
-      booking.userId,
-      'Đặt sân thành công',
-      `Bạn đã đặt ${booking.field.name} tại ${booking.field.venue.name} ngày ${dateStr}`,
-    );
 
     await this.notifyVenueOwners(
       booking.field.venueId,
-      'Booking mới',
-      `Có booking mới cho ${booking.field.name} ngày ${dateStr}`,
+      'Đang giữ chỗ — chờ thanh toán',
+      `Đang có người giữ chỗ ${booking.field.name} của cơ sở ${booking.field.venue.name}, chờ thanh toán (hết hạn ${expiresAt.toISOString()})`,
     );
-
-    await this.emailVenueOwnersNewBooking(booking.field.venueId, {
-      fieldName: booking.field.name,
-      venueName: booking.field.venue.name,
-      date: dateStr,
-      startTime,
-      endTime,
-      customerName: booking.user.name,
-      bookingId: booking.id,
-    });
 
     this.socketGateway.sendBookingStatusUpdate(booking.userId, {
       bookingId: booking.id,
@@ -177,6 +153,7 @@ export class BookingsService {
       fieldId: booking.fieldId,
       fieldName: booking.field.name,
       date: dateStr,
+      expiresAt: expiresAt.toISOString(),
     });
 
     return booking;
@@ -276,6 +253,7 @@ export class BookingsService {
     }
 
     const booking = await this.bookingsRepository.cancel(id);
+    await this.queueService.cancelBookingExpiry(id);
 
     await this.bookingsRepository.createAuditLog({
       actorId: user.id,
@@ -337,30 +315,6 @@ export class BookingsService {
 
     await Promise.all(
       ownerUserIds.map((userId) => this.queueService.createNotification(userId, title, message)),
-    );
-  }
-
-  private async emailVenueOwnersNewBooking(
-    venueId: string,
-    payload: {
-      fieldName: string;
-      venueName: string;
-      date: string;
-      startTime: string;
-      endTime: string;
-      customerName: string;
-      bookingId: string;
-    },
-  ) {
-    const owners = await this.bookingsRepository.findVenueOwnersWithContact(venueId);
-
-    await Promise.all(
-      owners.map((owner) =>
-        this.queueService.sendNewBookingOwnerEmail(owner.user.email, {
-          ownerName: owner.user.name,
-          ...payload,
-        }),
-      ),
     );
   }
 }

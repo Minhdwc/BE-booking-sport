@@ -16,6 +16,7 @@ model Booking {
   status     String    @default("pending") // pending, confirmed, cancelled, completed
   slotLock   String?   @default("active") @map("slot_lock")
   amount     Int
+  expiresAt  DateTime?
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @default(now())
   field      Field     @relation(fields: [fieldId], references: [id], onDelete: Cascade, map: "bookings_fieldId_fields_id_fk")

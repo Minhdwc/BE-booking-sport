@@ -58,6 +58,22 @@ export class PaymentsRepository {
     });
   }
 
+  findPendingPaymentByBooking(bookingId: string) {
+    return this.prisma.payment.findFirst({
+      where: { bookingId, status: 'pending' },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        booking: {
+          include: {
+            user: { select: { id: true, name: true, email: true, phone: true } },
+            field: { include: { venue: true } },
+            timeslot: true,
+          },
+        },
+      },
+    });
+  }
+
   findVenuePaymentAccountById(id: string) {
     return this.prisma.venuePaymentAccount.findUnique({
       where: { id },

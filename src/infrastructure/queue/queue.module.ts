@@ -3,6 +3,7 @@ import { Global, Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { MailModule } from '@/infrastructure/mail/mail.module';
 import { PrismaModule } from '@/database/prisma.module';
+import { BookingExpireProcessor } from './processors/booking-expire.processor';
 import { EmailProcessor } from './processors/email.processor';
 import { NotificationProcessor } from './processors/notification.processor';
 import { QUEUE_NAMES } from './queue.constants';
@@ -21,11 +22,15 @@ import { QueueService } from './queue.service';
         },
       }),
     }),
-    BullModule.registerQueue({ name: QUEUE_NAMES.EMAIL }, { name: QUEUE_NAMES.NOTIFICATION }),
+    BullModule.registerQueue(
+      { name: QUEUE_NAMES.EMAIL },
+      { name: QUEUE_NAMES.NOTIFICATION },
+      { name: QUEUE_NAMES.BOOKING },
+    ),
     MailModule,
     PrismaModule,
   ],
-  providers: [QueueService, EmailProcessor, NotificationProcessor],
+  providers: [QueueService, EmailProcessor, NotificationProcessor, BookingExpireProcessor],
   exports: [QueueService],
 })
 export class QueueModule {}

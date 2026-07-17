@@ -1,7 +1,8 @@
-import { IsIn, IsNotEmpty, IsOptional, IsString, IsUUID } from 'class-validator';
+import { IsIn, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 
 export class CreatePaymentDto {
-  @IsUUID()
+  @IsString()
+  @IsNotEmpty()
   bookingId: string;
 
   @IsOptional()
@@ -13,13 +14,15 @@ export class CreatePaymentDto {
   status?: string;
 
   @IsOptional()
-  @IsUUID()
+  @IsString()
+  @IsNotEmpty()
   venuePaymentAccountId?: string;
 }
 
 export class UpdatePaymentDto {
   @IsOptional()
-  @IsUUID()
+  @IsString()
+  @IsNotEmpty()
   bookingId?: string;
 
   @IsOptional()
@@ -31,7 +34,7 @@ export class UpdatePaymentDto {
   status?: string;
 
   @IsOptional()
-  @IsUUID()
+  @IsString()
   venuePaymentAccountId?: string | null;
 
   @IsOptional()

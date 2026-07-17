@@ -4,7 +4,6 @@ import {
   IsNumber,
   IsOptional,
   IsString,
-  IsUUID,
   Matches,
   Max,
   MaxLength,
@@ -65,7 +64,8 @@ export class DTOCreateVenue {
   images?: string[];
 
   @IsOptional()
-  @IsUUID()
+  @IsString()
+  @IsNotEmpty()
   ownerId?: string;
 }
 
@@ -124,6 +124,7 @@ export class DTOUpdateVenue {
 }
 
 export class DTOAddVenueOwner {
-  @IsUUID()
+  @IsString()
+  @IsNotEmpty()
   userId: string;
 }
