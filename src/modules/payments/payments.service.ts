@@ -215,6 +215,14 @@ export class PaymentsService {
       throw new BadRequestException('Thanh toán đã được hoàn tất');
     }
 
+    if (payment.booking.status !== 'pending') {
+      throw new BadRequestException('Booking không còn ở trạng thái chờ thanh toán');
+    }
+
+    if (payment.booking.expiresAt && payment.booking.expiresAt.getTime() <= Date.now()) {
+      throw new BadRequestException('Booking đã hết hạn giữ chỗ');
+    }
+
     await this.paymentsRepository.setMethod(paymentId, 'vnpay');
 
     const paymentUrl = this.paymentGateway.createPaymentUrl({
@@ -250,6 +258,10 @@ export class PaymentsService {
     }
 
     if (isSuccess) {
+      if (payment.status === 'success') {
+        return res.redirect(`${frontendUrl}/payments?status=success&paymentId=${paymentId}`);
+      }
+
       const updated = await this.markPaymentSuccess(
         paymentId,
         vnpayQuery.vnp_TransactionNo || vnpayQuery.vnp_TxnRef,

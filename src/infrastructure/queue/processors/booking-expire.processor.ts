@@ -27,31 +27,27 @@ export class BookingExpireProcessor extends WorkerHost {
     const bookingId = job.data.bookingId;
     this.logger.log(`Processing booking expire job for ${bookingId}`);
 
-    const booking = await this.prisma.booking.findUnique({
-      where: { id: bookingId },
-      include: {
-        field: { include: { venue: true } },
-        user: { select: { id: true, name: true, email: true } },
-      },
-    });
-
-    if (!booking) {
-      this.logger.warn(`Booking ${bookingId} not found — skip expire`);
-      return;
-    }
-
-    if (booking.status !== 'pending') {
-      this.logger.log(`Booking ${bookingId} status=${booking.status} — skip expire`);
-      return;
-    }
-
-    const updated = await this.prisma.booking.update({
-      where: { id: bookingId },
+    const result = await this.prisma.booking.updateMany({
+      where: { id: bookingId, status: 'pending' },
       data: { status: 'cancelled', slotLock: null },
+    });
+
+    if (result.count === 0) {
+      this.logger.log(`Booking ${bookingId} already confirmed/cancelled — skip expire`);
+      return;
+    }
+
+    const updated = await this.prisma.booking.findUnique({
+      where: { id: bookingId },
       include: {
         field: { include: { venue: true } },
       },
     });
+
+    if (!updated) {
+      this.logger.warn(`Booking ${bookingId} not found after expire update`);
+      return;
+    }
 
     const dateStr = updated.date.toISOString().split('T')[0];
     const title = 'Hết hạn giữ chỗ';

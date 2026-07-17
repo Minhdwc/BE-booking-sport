@@ -6,12 +6,7 @@ import {
   BookingCancelledData,
   NewBookingOwnerData,
 } from '@/infrastructure/mail/mail.service';
-import {
-  BOOKING_JOBS,
-  EMAIL_JOBS,
-  NOTIFICATION_JOBS,
-  QUEUE_NAMES,
-} from './queue.constants';
+import { BOOKING_JOBS, EMAIL_JOBS, NOTIFICATION_JOBS, QUEUE_NAMES } from './queue.constants';
 
 @Injectable()
 export class QueueService {
