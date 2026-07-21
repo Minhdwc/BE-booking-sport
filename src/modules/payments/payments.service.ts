@@ -14,8 +14,9 @@ import { QueueService } from '@/infrastructure/queue/queue.service';
 import { SocketGateway } from '@/infrastructure/socket/socket.gateway';
 import { getPagination, PaginationQueryDto, toPaginatedResult } from '@/common/dto/pagination.dto';
 import { JwtPayloadReturn } from '@/utils/jwt.util';
-import { CreatePaymentDto, UpdatePaymentDto } from './payments.dto';
+import { CreatePaymentDto, PayWithSavedMethodDto, UpdatePaymentDto } from './payments.dto';
 import { PaymentsRepository } from './payments.repository';
+import { UserPaymentMethodsRepository } from '@/modules/user-payment-methods/user-payment-methods.repository';
 
 @Injectable()
 export class PaymentsService {
@@ -24,6 +25,7 @@ export class PaymentsService {
     private readonly paymentGateway: PaymentGatewayService,
     private readonly queueService: QueueService,
     private readonly socketGateway: SocketGateway,
+    private readonly userPaymentMethodsRepository: UserPaymentMethodsRepository,
   ) {}
 
   async findAll(user: JwtPayloadReturn, query: PaginationQueryDto = {}) {
@@ -235,6 +237,73 @@ export class PaymentsService {
     return { paymentUrl };
   }
 
+  async payWithSavedMethod(
+    paymentId: string,
+    user: JwtPayloadReturn,
+    dto: PayWithSavedMethodDto = {},
+  ) {
+    const payment = await this.findOne(paymentId, user);
+
+    if (user.role === 'staff') {
+      throw new ForbiddenException('Staff không được thanh toán thay user');
+    }
+
+    if (payment.status === 'success') {
+      throw new BadRequestException('Thanh toán đã được hoàn tất');
+    }
+
+    if (payment.booking.status !== 'pending') {
+      throw new BadRequestException('Booking không còn ở trạng thái chờ thanh toán');
+    }
+
+    if (payment.booking.expiresAt && payment.booking.expiresAt.getTime() <= Date.now()) {
+      throw new BadRequestException('Booking đã hết hạn giữ chỗ');
+    }
+
+    const savedMethod = dto.userPaymentMethodId
+      ? await this.userPaymentMethodsRepository.findById(dto.userPaymentMethodId)
+      : await this.userPaymentMethodsRepository.findDefaultForUser(user.id);
+
+    if (!savedMethod || savedMethod.userId !== user.id) {
+      throw new BadRequestException(
+        'Chưa có phương thức thanh toán đã lưu. Thêm trong Tài khoản hoặc dùng VNPay.',
+      );
+    }
+
+    if (!savedMethod.isActive) {
+      throw new BadRequestException('Phương thức thanh toán đang không hoạt động');
+    }
+
+    const transactionCode = `DEMO-${savedMethod.id.slice(0, 8)}-${Date.now()}`;
+
+    const updated = await this.markPaymentSuccess(
+      paymentId,
+      transactionCode,
+      {
+        mode: 'saved_method_demo',
+        userPaymentMethodId: savedMethod.id,
+        provider: savedMethod.provider,
+        maskedNumber: savedMethod.maskedNumber,
+      },
+      savedMethod.type,
+    );
+
+    await this.onPaymentSuccess(updated);
+
+    this.socketGateway.sendBookingStatusUpdate(user.id, {
+      bookingId: updated.bookingId,
+      status: 'confirmed',
+      fieldName: updated.booking.field.name ?? 'Sân',
+    });
+
+    return {
+      paymentId: updated.id,
+      status: updated.status,
+      method: updated.method,
+      transactionCode: updated.transactionCode,
+    };
+  }
+
   async handleVnpayReturn(query: Record<string, string>, res: Response) {
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
     const vnpayQuery = query as VnpayReturnParams;
@@ -327,7 +396,8 @@ export class PaymentsService {
   private async markPaymentSuccess(
     paymentId: string,
     transactionCode: string,
-    gatewayResponse?: Record<string, string | undefined>,
+    gatewayResponse?: Record<string, string | undefined> | Prisma.InputJsonValue,
+    method?: string,
   ) {
     const existing = await this.paymentsRepository.findById(paymentId);
     const oldStatus = existing?.status ?? 'pending';
@@ -336,6 +406,7 @@ export class PaymentsService {
       paymentId,
       transactionCode,
       gatewayResponse,
+      method,
     );
 
     await this.paymentsRepository.confirmBooking(payment.bookingId);

@@ -1,4 +1,9 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { getPagination, PaginationQueryDto, toPaginatedResult } from '@/common/dto/pagination.dto';
 import { JwtPayloadReturn } from '@/utils/jwt.util';
 import { ReviewsRepository } from './reviews.repository';
@@ -26,10 +31,42 @@ export class ReviewsService {
     return review;
   }
 
-  async create(user: JwtPayloadReturn, fieldId: string, rating: number, comment?: string) {
+  async getEligibility(user: JwtPayloadReturn, fieldId: string) {
     const field = await this.reviewsRepository.findFieldById(fieldId);
     if (!field) {
       throw new NotFoundException('Field không tồn tại');
+    }
+
+    const existingReview = await this.reviewsRepository.findByUserAndField(user.id, fieldId);
+    if (existingReview) {
+      return {
+        canReview: false,
+        reason: 'already_reviewed' as const,
+        message: 'Bạn đã đánh giá sân này rồi',
+      };
+    }
+
+    const confirmedBooking = await this.reviewsRepository.hasConfirmedBooking(user.id, fieldId);
+    if (!confirmedBooking) {
+      return {
+        canReview: false,
+        reason: 'no_confirmed_booking' as const,
+        message:
+          'Bạn cần có ít nhất một lần đặt sân đã xác nhận tại sân này trước khi viết đánh giá',
+      };
+    }
+
+    return {
+      canReview: true,
+      reason: null,
+      message: null,
+    };
+  }
+
+  async create(user: JwtPayloadReturn, fieldId: string, rating: number, comment?: string) {
+    const eligibility = await this.getEligibility(user, fieldId);
+    if (!eligibility.canReview) {
+      throw new BadRequestException(eligibility.message ?? 'Bạn không thể đánh giá sân này');
     }
 
     return this.reviewsRepository.create({

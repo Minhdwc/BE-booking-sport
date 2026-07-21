@@ -1,5 +1,11 @@
 import { IsInt, IsNotEmpty, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
 
+export class ReviewEligibilityQueryDto {
+  @IsString()
+  @IsNotEmpty()
+  fieldId: string;
+}
+
 export class CreateReviewDto {
   @IsString()
   @IsNotEmpty()

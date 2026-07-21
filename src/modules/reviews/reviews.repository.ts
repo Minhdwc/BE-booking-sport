@@ -37,6 +37,24 @@ export class ReviewsRepository {
     return this.prisma.field.findUnique({ where: { id } });
   }
 
+  hasConfirmedBooking(userId: string, fieldId: string) {
+    return this.prisma.booking.findFirst({
+      where: {
+        userId,
+        fieldId,
+        status: 'confirmed',
+      },
+      select: { id: true },
+    });
+  }
+
+  findByUserAndField(userId: string, fieldId: string) {
+    return this.prisma.review.findFirst({
+      where: { userId, fieldId },
+      select: { id: true },
+    });
+  }
+
   create(data: { userId: string; fieldId: string; rating: number; comment?: string }) {
     return this.prisma.review.create({
       data,

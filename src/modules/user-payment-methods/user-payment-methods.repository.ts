@@ -23,6 +23,13 @@ export class UserPaymentMethodsRepository {
     return this.prisma.userPaymentMethod.findUnique({ where: { id } });
   }
 
+  findDefaultForUser(userId: string) {
+    return this.prisma.userPaymentMethod.findFirst({
+      where: { userId, isActive: true },
+      orderBy: [{ isDefault: 'desc' }, { createdAt: 'desc' }],
+    });
+  }
+
   create(data: Prisma.UserPaymentMethodUncheckedCreateInput) {
     return this.prisma.userPaymentMethod.create({ data });
   }

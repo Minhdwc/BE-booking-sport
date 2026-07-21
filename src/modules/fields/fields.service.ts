@@ -40,6 +40,17 @@ export class FieldsService {
       where.venueId = { in: ownedVenueIds };
     }
 
+    if (query.sportId) {
+      where.sportId = query.sportId;
+    }
+
+    if (query.minPrice != null || query.maxPrice != null) {
+      where.price = {
+        ...(query.minPrice != null ? { gte: query.minPrice } : {}),
+        ...(query.maxPrice != null ? { lte: query.maxPrice } : {}),
+      };
+    }
+
     if (!user || user.role === 'user') {
       where.status = 'active';
     }

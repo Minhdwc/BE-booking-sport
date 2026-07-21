@@ -5,7 +5,7 @@ import { CurrentUser } from '@/common/decorators/current-user.decorator';
 import { PaginationQueryDto } from '@/common/dto/pagination.dto';
 import { JwtPayloadReturn } from '@/utils/jwt.util';
 import { PaymentsService } from './payments.service';
-import { CreatePaymentDto, UpdatePaymentDto } from './payments.dto';
+import { CreatePaymentDto, PayWithSavedMethodDto, UpdatePaymentDto } from './payments.dto';
 
 @Controller('payments')
 export class PaymentsController {
@@ -71,6 +71,15 @@ export class PaymentsController {
       '127.0.0.1';
 
     return this.paymentsService.createVnpayUrl(id, user, ipAddr);
+  }
+
+  @Post(':id/pay-with-saved-method')
+  payWithSavedMethod(
+    @Param('id') id: string,
+    @Body() dto: PayWithSavedMethodDto,
+    @CurrentUser() user: JwtPayloadReturn,
+  ) {
+    return this.paymentsService.payWithSavedMethod(id, user, dto);
   }
 
   @Patch(':id')

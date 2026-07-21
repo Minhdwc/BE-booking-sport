@@ -130,14 +130,19 @@ export class PaymentsRepository {
     });
   }
 
-  markSuccess(id: string, transactionCode: string, gatewayResponse?: Prisma.InputJsonValue) {
+  markSuccess(
+    id: string,
+    transactionCode: string,
+    gatewayResponse?: Prisma.InputJsonValue,
+    method?: string,
+  ) {
     return this.prisma.payment.update({
       where: { id },
       data: {
         status: 'success',
         transactionCode,
         paidAt: new Date(),
-        method: 'vnpay',
+        method: method ?? 'vnpay',
         ...(gatewayResponse && { gatewayResponse }),
       },
       include: {

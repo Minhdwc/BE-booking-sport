@@ -42,3 +42,9 @@ export class UpdatePaymentDto {
   @IsNotEmpty()
   transactionCode?: string;
 }
+
+export class PayWithSavedMethodDto {
+  @IsOptional()
+  @IsString()
+  userPaymentMethodId?: string;
+}

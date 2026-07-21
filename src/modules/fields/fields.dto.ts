@@ -1,5 +1,4 @@
 import {
-  IsArray,
   IsDateString,
   IsInt,
   IsNotEmpty,
@@ -8,12 +7,29 @@ import {
   MaxLength,
   Min,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 import { PaginationQueryDto } from '@/common/dto/pagination.dto';
 
 export class FindAllFieldsQueryDto extends PaginationQueryDto {
   @IsOptional()
   @IsString()
   venueId?: string;
+
+  @IsOptional()
+  @IsString()
+  sportId?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  minPrice?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  maxPrice?: number;
 }
 
 export class FieldAvailabilityQueryDto {

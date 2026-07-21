@@ -4,7 +4,7 @@ import { Public } from '@/common/decorators/public.decorator';
 import { PaginationQueryDto } from '@/common/dto/pagination.dto';
 import { JwtPayloadReturn } from '@/utils/jwt.util';
 import { ReviewsService } from './reviews.service';
-import { CreateReviewDto, UpdateReviewDto } from './reviews.dto';
+import { CreateReviewDto, ReviewEligibilityQueryDto, UpdateReviewDto } from './reviews.dto';
 
 @Controller('reviews')
 export class ReviewsController {
@@ -14,6 +14,14 @@ export class ReviewsController {
   @Get()
   findAll(@Query() query: PaginationQueryDto) {
     return this.reviewsService.findAll(query);
+  }
+
+  @Get('eligibility/check')
+  checkEligibility(
+    @Query() query: ReviewEligibilityQueryDto,
+    @CurrentUser() user: JwtPayloadReturn,
+  ) {
+    return this.reviewsService.getEligibility(user, query.fieldId);
   }
 
   @Public()
