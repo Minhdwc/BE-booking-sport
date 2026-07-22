@@ -21,6 +21,10 @@ export class TimeslotsRepository {
     return this.prisma.timeslot.findUnique({ where: { id } });
   }
 
+  countBookings(id: string) {
+    return this.prisma.booking.count({ where: { timeslotId: id } });
+  }
+
   create(startTime: Date, endTime: Date) {
     return this.prisma.timeslot.create({ data: { startTime, endTime } });
   }
