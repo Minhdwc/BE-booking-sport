@@ -3,6 +3,7 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { Response } from 'express';
@@ -238,70 +239,13 @@ export class PaymentsService {
   }
 
   async payWithSavedMethod(
-    paymentId: string,
-    user: JwtPayloadReturn,
-    dto: PayWithSavedMethodDto = {},
+    _paymentId: string,
+    _user: JwtPayloadReturn,
+    _dto: PayWithSavedMethodDto = {},
   ) {
-    const payment = await this.findOne(paymentId, user);
-
-    if (user.role === 'staff') {
-      throw new ForbiddenException('Staff không được thanh toán thay user');
-    }
-
-    if (payment.status === 'success') {
-      throw new BadRequestException('Thanh toán đã được hoàn tất');
-    }
-
-    if (payment.booking.status !== 'pending') {
-      throw new BadRequestException('Booking không còn ở trạng thái chờ thanh toán');
-    }
-
-    if (payment.booking.expiresAt && payment.booking.expiresAt.getTime() <= Date.now()) {
-      throw new BadRequestException('Booking đã hết hạn giữ chỗ');
-    }
-
-    const savedMethod = dto.userPaymentMethodId
-      ? await this.userPaymentMethodsRepository.findById(dto.userPaymentMethodId)
-      : await this.userPaymentMethodsRepository.findDefaultForUser(user.id);
-
-    if (!savedMethod || savedMethod.userId !== user.id) {
-      throw new BadRequestException(
-        'Chưa có phương thức thanh toán đã lưu. Thêm trong Tài khoản hoặc dùng VNPay.',
-      );
-    }
-
-    if (!savedMethod.isActive) {
-      throw new BadRequestException('Phương thức thanh toán đang không hoạt động');
-    }
-
-    const transactionCode = `DEMO-${savedMethod.id.slice(0, 8)}-${Date.now()}`;
-
-    const updated = await this.markPaymentSuccess(
-      paymentId,
-      transactionCode,
-      {
-        mode: 'saved_method_demo',
-        userPaymentMethodId: savedMethod.id,
-        provider: savedMethod.provider,
-        maskedNumber: savedMethod.maskedNumber,
-      },
-      savedMethod.type,
+    throw new ServiceUnavailableException(
+      'Thanh toán bằng phương thức đã lưu chưa được hỗ trợ. Vui lòng dùng VNPay.',
     );
-
-    await this.onPaymentSuccess(updated);
-
-    this.socketGateway.sendBookingStatusUpdate(user.id, {
-      bookingId: updated.bookingId,
-      status: 'confirmed',
-      fieldName: updated.booking.field.name ?? 'Sân',
-    });
-
-    return {
-      paymentId: updated.id,
-      status: updated.status,
-      method: updated.method,
-      transactionCode: updated.transactionCode,
-    };
   }
 
   async handleVnpayReturn(query: Record<string, string>, res: Response) {
