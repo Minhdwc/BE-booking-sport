@@ -27,33 +27,40 @@ export class BookingExpireProcessor extends WorkerHost {
     const bookingId = job.data.bookingId;
     this.logger.log(`Processing booking expire job for ${bookingId}`);
 
-    const current = await this.prisma.booking.findUnique({
-      where: { id: bookingId },
-      select: { status: true },
+    const updated = await this.prisma.$transaction(async (tx) => {
+      // Claim the expiry atomically so an in-flight payment confirmation cannot
+      // be overwritten after it has changed the booking status.
+      const claimed = await tx.booking.updateMany({
+        where: { id: bookingId, status: 'waiting_payment' },
+        data: { status: 'expired' },
+      });
+
+      if (claimed.count === 0) {
+        return null;
+      }
+
+      await tx.bookingItem.updateMany({
+        where: { bookingId },
+        data: { status: 'cancelled' },
+      });
+
+      return tx.booking.findUnique({
+        where: { id: bookingId },
+        include: {
+          user: { select: { id: true, name: true, email: true } },
+          items: {
+            include: {
+              field: { include: { venue: true } },
+            },
+          },
+        },
+      });
     });
 
-    if (!current || current.status !== 'waiting_payment') {
+    if (!updated) {
       this.logger.log(`Booking ${bookingId} already confirmed/cancelled/expired — skip expire`);
       return;
     }
-
-    await this.prisma.bookingItem.updateMany({
-      where: { bookingId },
-      data: { status: 'cancelled' },
-    });
-
-    const updated = await this.prisma.booking.update({
-      where: { id: bookingId },
-      data: { status: 'expired' },
-      include: {
-        user: { select: { id: true, name: true, email: true } },
-        items: {
-          include: {
-            field: { include: { venue: true } },
-          },
-        },
-      },
-    });
 
     const firstItem = updated.items[0];
     const dateStr = firstItem?.date.toISOString().split('T')[0] ?? '';

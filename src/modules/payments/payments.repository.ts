@@ -164,43 +164,73 @@ export class PaymentsRepository {
     });
   }
 
-  markSuccess(
+  confirmPayment(
     id: string,
     transactionCode: string,
     gatewayResponse?: Prisma.InputJsonValue,
     method?: string,
   ) {
-    return this.prisma.payment.update({
-      where: { id },
-      data: {
-        status: 'success',
-        transactionCode,
-        paidAt: new Date(),
-        gateway: 'vnpay',
-        method: method,
-        ...(gatewayResponse && { gatewayResponse }),
-      },
-      include: {
-        booking: {
-          include: {
-            user: { select: { id: true, name: true, email: true, phone: true } },
-            items: {
-              include: {
-                field: { include: { venue: true } },
-                venue: true,
+    return this.prisma.$transaction(async (tx) => {
+      const current = await tx.payment.findUnique({
+        where: { id },
+        select: { bookingId: true },
+      });
+
+      if (!current) {
+        return { payment: null, changed: false, bookingUnavailable: true };
+      }
+
+      // Booking status is the synchronization point shared with the expiry
+      // worker. Whichever transition claims waiting_payment first wins.
+      await tx.booking.updateMany({
+        where: { id: current.bookingId, status: 'waiting_payment' },
+        data: { status: 'confirmed' },
+      });
+
+      const booking = await tx.booking.findUnique({
+        where: { id: current.bookingId },
+        select: { status: true },
+      });
+
+      if (booking?.status !== 'confirmed') {
+        return { payment: null, changed: false, bookingUnavailable: true };
+      }
+
+      const transitioned = await tx.payment.updateMany({
+        where: { id, status: { not: 'success' } },
+        data: {
+          status: 'success',
+          transactionCode,
+          paidAt: new Date(),
+          gateway: 'vnpay',
+          method,
+          ...(gatewayResponse && { gatewayResponse }),
+        },
+      });
+
+      const payment = await tx.payment.findUnique({
+        where: { id },
+        include: {
+          booking: {
+            include: {
+              user: { select: { id: true, name: true, email: true, phone: true } },
+              items: {
+                include: {
+                  field: { include: { venue: true } },
+                  venue: true,
+                },
               },
             },
           },
+          venuePaymentAccount: true,
         },
-        venuePaymentAccount: true,
-      },
-    });
-  }
+      });
 
-  confirmBooking(id: string) {
-    return this.prisma.booking.update({
-      where: { id },
-      data: { status: 'confirmed' },
+      return {
+        payment,
+        changed: transitioned.count === 1,
+        bookingUnavailable: false,
+      };
     });
   }
 
