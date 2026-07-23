@@ -1,6 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '@/database/prisma.service';
+
+export class BookingSlotConflictError extends Error {
+  constructor() {
+    super('Booking slot is no longer available');
+    this.name = 'BookingSlotConflictError';
+  }
+}
+
 @Injectable()
 export class BookingsRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -103,32 +111,78 @@ export class BookingsRepository {
       subtotal: number;
     }>;
   }) {
-    return this.prisma.booking.create({
-      data: {
-        userId: data.userId,
-        bookingCode: data.bookingCode,
-        status: data.status,
-        totalAmount: data.totalAmount,
-        discountAmount: data.discountAmount,
-        finalAmount: data.finalAmount,
-        note: data.note,
-        expiresAt: data.expiresAt,
-        items: {
-          create: data.items,
-        },
-      },
-      include: {
-        user: {
-          select: { id: true, name: true, email: true, phone: true },
-        },
-        items: {
-          include: {
-            field: { include: { sport: true, venue: true } },
-            venue: true,
+    return this.prisma.$transaction(async (tx) => {
+      const lockKeys = [
+        ...new Set(
+          data.items.map(
+            (item) => `${item.fieldId}:${item.date.toISOString().slice(0, 10)}`,
+          ),
+        ),
+      ].sort();
+
+      // Serialize availability checks for the same field/day. Without this lock,
+      // concurrent requests can both observe an empty slot and both insert it.
+      for (const lockKey of lockKeys) {
+        await tx.$queryRaw(Prisma.sql`
+          SELECT pg_advisory_xact_lock(hashtext(${lockKey}))
+        `);
+      }
+
+      for (const [index, item] of data.items.entries()) {
+        const overlapsAnotherRequestedItem = data.items.slice(0, index).some(
+          (other) =>
+            other.fieldId === item.fieldId &&
+            other.date.getTime() === item.date.getTime() &&
+            other.startTime.getTime() < item.endTime.getTime() &&
+            other.endTime.getTime() > item.startTime.getTime(),
+        );
+
+        const existingConflict = await tx.bookingItem.findFirst({
+          where: {
+            fieldId: item.fieldId,
+            date: item.date,
+            status: 'active',
+            startTime: { lt: item.endTime },
+            endTime: { gt: item.startTime },
+            booking: {
+              status: { in: ['waiting_payment', 'confirmed', 'completed'] },
+            },
+          },
+          select: { id: true },
+        });
+
+        if (overlapsAnotherRequestedItem || existingConflict) {
+          throw new BookingSlotConflictError();
+        }
+      }
+
+      return tx.booking.create({
+        data: {
+          userId: data.userId,
+          bookingCode: data.bookingCode,
+          status: data.status,
+          totalAmount: data.totalAmount,
+          discountAmount: data.discountAmount,
+          finalAmount: data.finalAmount,
+          note: data.note,
+          expiresAt: data.expiresAt,
+          items: {
+            create: data.items,
           },
         },
-        payments: true,
-      },
+        include: {
+          user: {
+            select: { id: true, name: true, email: true, phone: true },
+          },
+          items: {
+            include: {
+              field: { include: { sport: true, venue: true } },
+              venue: true,
+            },
+          },
+          payments: true,
+        },
+      });
     });
   }
 

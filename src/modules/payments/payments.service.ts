@@ -18,6 +18,12 @@ import { CreatePaymentDto, PayWithSavedMethodDto, UpdatePaymentDto } from './pay
 import { PaymentsRepository } from './payments.repository';
 import { UserPaymentMethodsRepository } from '@/modules/user-payment-methods/user-payment-methods.repository';
 
+class BookingUnavailableForPaymentException extends BadRequestException {
+  constructor() {
+    super('Booking không còn khả dụng để xác nhận thanh toán');
+  }
+}
+
 @Injectable()
 export class PaymentsService {
   constructor(
@@ -280,7 +286,7 @@ export class PaymentsService {
 
     const transactionCode = `DEMO-${savedMethod.id.slice(0, 8)}-${Date.now()}`;
 
-    const updated = await this.markPaymentSuccess(
+    const { payment: updated, changed } = await this.markPaymentSuccess(
       paymentId,
       transactionCode,
       {
@@ -292,7 +298,9 @@ export class PaymentsService {
       savedMethod.type,
     );
 
-    await this.onPaymentSuccess(updated);
+    if (changed) {
+      await this.onPaymentSuccess(updated);
+    }
 
     this.socketGateway.sendBookingStatusUpdate(user.id, {
       bookingId: updated.bookingId,
@@ -335,13 +343,22 @@ export class PaymentsService {
         return res.redirect(`${frontendUrl}/payments?status=success&paymentId=${paymentId}`);
       }
 
-      const updated = await this.markPaymentSuccess(
-        paymentId,
-        vnpayQuery.vnp_TransactionNo || vnpayQuery.vnp_TxnRef,
-        vnpayQuery,
-      );
-      await this.onPaymentSuccess(updated);
-      return res.redirect(`${frontendUrl}/payments?status=success&paymentId=${paymentId}`);
+      try {
+        const { payment: updated, changed } = await this.markPaymentSuccess(
+          paymentId,
+          vnpayQuery.vnp_TransactionNo || vnpayQuery.vnp_TxnRef,
+          vnpayQuery,
+        );
+        if (changed) {
+          await this.onPaymentSuccess(updated);
+        }
+        return res.redirect(`${frontendUrl}/payments?status=success&paymentId=${paymentId}`);
+      } catch (error) {
+        if (error instanceof BookingUnavailableForPaymentException) {
+          return res.redirect(`${frontendUrl}/payments?status=expired&paymentId=${paymentId}`);
+        }
+        throw error;
+      }
     }
 
     await this.paymentsRepository.setStatus(paymentId, 'failed');
@@ -373,13 +390,22 @@ export class PaymentsService {
     }
 
     if (isSuccess) {
-      const updated = await this.markPaymentSuccess(
-        paymentId,
-        vnpayQuery.vnp_TransactionNo || vnpayQuery.vnp_TxnRef,
-        vnpayQuery,
-      );
-      await this.onPaymentSuccess(updated);
-      return { RspCode: '00', Message: 'Confirm Success' };
+      try {
+        const { payment: updated, changed } = await this.markPaymentSuccess(
+          paymentId,
+          vnpayQuery.vnp_TransactionNo || vnpayQuery.vnp_TxnRef,
+          vnpayQuery,
+        );
+        if (changed) {
+          await this.onPaymentSuccess(updated);
+        }
+        return { RspCode: '00', Message: 'Confirm Success' };
+      } catch (error) {
+        if (error instanceof BookingUnavailableForPaymentException) {
+          return { RspCode: '99', Message: 'Booking is no longer available' };
+        }
+        throw error;
+      }
     }
 
     await this.paymentsRepository.setStatus(paymentId, 'failed');
@@ -407,30 +433,35 @@ export class PaymentsService {
     const existing = await this.paymentsRepository.findById(paymentId);
     const oldStatus = existing?.status ?? 'pending';
 
-    const payment = await this.paymentsRepository.markSuccess(
+    const result = await this.paymentsRepository.confirmPayment(
       paymentId,
       transactionCode,
       gatewayResponse,
       method,
     );
 
-    await this.paymentsRepository.confirmBooking(payment.bookingId);
-    await this.queueService.cancelBookingExpiry(payment.bookingId);
+    if (result.bookingUnavailable || !result.payment) {
+      throw new BookingUnavailableForPaymentException();
+    }
 
-    await this.paymentsRepository.createAuditLog({
-      actorId: null,
-      module: 'payment',
-      action: 'payment.success',
-      entityType: 'payment',
-      entityId: payment.id,
-      fromValue: oldStatus,
-      toValue: 'success',
-      note: transactionCode,
-    });
+    if (result.changed) {
+      await this.queueService.cancelBookingExpiry(result.payment.bookingId);
 
-    await this.queueService.recordPaymentStatistic(payment.id);
+      await this.paymentsRepository.createAuditLog({
+        actorId: null,
+        module: 'payment',
+        action: 'payment.success',
+        entityType: 'payment',
+        entityId: result.payment.id,
+        fromValue: oldStatus,
+        toValue: 'success',
+        note: transactionCode,
+      });
 
-    return payment;
+      await this.queueService.recordPaymentStatistic(result.payment.id);
+    }
+
+    return result;
   }
 
   private async onPaymentSuccess(payment: {

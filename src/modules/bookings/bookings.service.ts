@@ -11,7 +11,7 @@ import { SocketGateway } from '@/infrastructure/socket/socket.gateway';
 import { getPagination, PaginationQueryDto, toPaginatedResult } from '@/common/dto/pagination.dto';
 import { JwtPayloadReturn } from '@/utils/jwt.util';
 import { CreateBookingDto } from './bookings.dto';
-import { BookingsRepository } from './bookings.repository';
+import { BookingsRepository, BookingSlotConflictError } from './bookings.repository';
 
 @Injectable()
 export class BookingsService {
@@ -193,17 +193,25 @@ export class BookingsService {
     const finalAmount = totalAmount - discountAmount;
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
 
-    const booking = await this.bookingsRepository.create({
-      userId: user.id,
-      bookingCode: `BK${Date.now().toString(36).toUpperCase()}${Math.random().toString(36).slice(2, 6).toUpperCase()}`,
-      status: 'waiting_payment',
-      totalAmount,
-      discountAmount,
-      finalAmount,
-      note: dto.note,
-      expiresAt,
-      items: preparedItems.map(({ fieldName, venueName, venueIdForNotify, ...item }) => item),
-    });
+    let booking;
+    try {
+      booking = await this.bookingsRepository.create({
+        userId: user.id,
+        bookingCode: `BK${Date.now().toString(36).toUpperCase()}${Math.random().toString(36).slice(2, 6).toUpperCase()}`,
+        status: 'waiting_payment',
+        totalAmount,
+        discountAmount,
+        finalAmount,
+        note: dto.note,
+        expiresAt,
+        items: preparedItems.map(({ fieldName, venueName, venueIdForNotify, ...item }) => item),
+      });
+    } catch (error) {
+      if (error instanceof BookingSlotConflictError) {
+        throw new ConflictException('Một hoặc nhiều khung giờ vừa được người khác đặt');
+      }
+      throw error;
+    }
 
     await this.queueService.scheduleBookingExpiry(booking.id);
 
