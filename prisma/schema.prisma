@@ -46,6 +46,7 @@ model Field {
   venue               Venue         @relation(fields: [venueId], references: [id], onDelete: Cascade, map: "fields_venueId_venues_id_fk")
   reviews             Review[]
   fieldImages         FieldImages[]
+  fieldFavorites      UserFieldFavorite[]
 
   @@index([venueId, sportId, status])
   @@map("fields")
@@ -179,6 +180,8 @@ model User {
   reviews        Review[]
   venueOwners    VenueOwner[]
   paymentMethods UserPaymentMethod[]
+  fieldFavorites UserFieldFavorite[]
+  venueFavorites UserVenueFavorite[]
 
   @@map("users")
 }
@@ -223,6 +226,7 @@ model Venue {
   paymentAccounts VenuePaymentAccount[]
   venueAmenities  VenueAmenities[]
   venueSports     VenueSport[]
+  venueFavorites  UserVenueFavorite[]
 
   @@map("venues")
 }
@@ -303,4 +307,30 @@ model VenueAmenities {
   amenity   Amenities @relation(fields: [amenityId], references: [id])
 
   @@map("venue_amenities")
+}
+
+model UserFieldFavorite {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  fieldId   String   @map("field_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  field     Field    @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, fieldId])
+  @@index([userId])
+  @@map("user_field_favorites")
+}
+
+model UserVenueFavorite {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  venueId   String   @map("venue_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  venue     Venue    @relation(fields: [venueId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, venueId])
+  @@index([userId])
+  @@map("user_venue_favorites")
 }

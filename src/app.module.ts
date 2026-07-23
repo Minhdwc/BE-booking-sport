@@ -13,6 +13,7 @@ import { AmenitiesModule } from './modules/amenities/amenities.module';
 import { AuditLogsModule } from './modules/audit-logs/audit-logs.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { BookingsModule } from './modules/bookings/bookings.module';
+import { FavoritesModule } from './modules/favorites/favorites.module';
 import { FieldsModule } from './modules/fields/fields.module';
 import { HealthModule } from './modules/health/health.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
@@ -48,6 +49,7 @@ import { VenuesModule } from './modules/venues/venues.module';
     VenuesModule,
     TimeslotsModule,
     FieldsModule,
+    FavoritesModule,
     ReviewsModule,
     PaymentsModule,
     UserPaymentMethodsModule,
