@@ -15,7 +15,7 @@ export class AuthService {
     const user = await this.authRepository.findByEmail(email);
 
     if (!user) {
-      throw new UnauthorizedException('Email hoặc mật khẩu không đúng');
+      throw new UnauthorizedException('Không tìm thấy user của email đã nhập');
     }
 
     if (!user.isActive) {

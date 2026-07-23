@@ -78,4 +78,27 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
       await this.client.del(...keys);
     }
   }
+
+  async zIncrBy(key: string, increment: number, member: string) {
+    return this.client.zincrby(key, increment, member);
+  }
+
+  async zRevRange(key: string, start: number, stop: number) {
+    return this.client.zrevrange(key, start, stop, 'WITHSCORES');
+  }
+
+  async lPushTrim(key: string, value: string, maxLength: number) {
+    await this.client.lpush(key, value);
+    await this.client.ltrim(key, 0, maxLength - 1);
+  }
+
+  async lRemPush(key: string, value: string, maxLength: number) {
+    await this.client.lrem(key, 0, value);
+    await this.client.lpush(key, value);
+    await this.client.ltrim(key, 0, maxLength - 1);
+  }
+
+  async lRange(key: string, start: number, stop: number) {
+    return this.client.lrange(key, start, stop);
+  }
 }

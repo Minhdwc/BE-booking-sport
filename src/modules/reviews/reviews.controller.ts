@@ -1,10 +1,14 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { CurrentUser } from '@/common/decorators/current-user.decorator';
 import { Public } from '@/common/decorators/public.decorator';
-import { PaginationQueryDto } from '@/common/dto/pagination.dto';
 import { JwtPayloadReturn } from '@/utils/jwt.util';
 import { ReviewsService } from './reviews.service';
-import { CreateReviewDto, ReviewEligibilityQueryDto, UpdateReviewDto } from './reviews.dto';
+import {
+  CreateReviewDto,
+  ReviewEligibilityQueryDto,
+  ReviewListQueryDto,
+  UpdateReviewDto,
+} from './reviews.dto';
 
 @Controller('reviews')
 export class ReviewsController {
@@ -12,7 +16,7 @@ export class ReviewsController {
 
   @Public()
   @Get()
-  findAll(@Query() query: PaginationQueryDto) {
+  findAll(@Query() query: ReviewListQueryDto) {
     return this.reviewsService.findAll(query);
   }
 
@@ -21,7 +25,7 @@ export class ReviewsController {
     @Query() query: ReviewEligibilityQueryDto,
     @CurrentUser() user: JwtPayloadReturn,
   ) {
-    return this.reviewsService.getEligibility(user, query.fieldId);
+    return this.reviewsService.getEligibility(user, query.venueId);
   }
 
   @Public()
@@ -34,7 +38,7 @@ export class ReviewsController {
   create(@Body() createReviewDto: CreateReviewDto, @CurrentUser() user: JwtPayloadReturn) {
     return this.reviewsService.create(
       user,
-      createReviewDto.fieldId,
+      createReviewDto.venueId,
       createReviewDto.rating,
       createReviewDto.comment,
     );

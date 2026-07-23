@@ -33,10 +33,25 @@ export class NotificationsService {
     return this.notificationsRepository.markAllAsRead(userId);
   }
 
-  async push(userId: string, title: string, message: string, type?: string) {
-    const notification = await this.notificationsRepository.create(userId, title, message);
+  async push(
+    userId: string,
+    title: string,
+    message: string,
+    options?: { type?: string; payload?: any },
+  ) {
+    const notification = await this.notificationsRepository.create({
+      userId,
+      title,
+      message,
+      type: options?.type,
+    });
 
-    this.socket.sendNotificationToUser(userId, { title, message, type });
+    this.socket.sendNotificationToUser(userId, {
+      title,
+      message,
+      type: notification.type,
+      payload: options?.payload,
+    });
 
     return notification;
   }

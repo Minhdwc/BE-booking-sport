@@ -15,14 +15,14 @@ export class AuditLogsRepository {
 
   findBookingIds(venueIds: string[]) {
     return this.prisma.booking.findMany({
-      where: { field: { venueId: { in: venueIds } } },
+      where: { items: { some: { venueId: { in: venueIds } } } },
       select: { id: true },
     });
   }
 
   findPaymentIds(venueIds: string[]) {
     return this.prisma.payment.findMany({
-      where: { booking: { field: { venueId: { in: venueIds } } } },
+      where: { booking: { items: { some: { venueId: { in: venueIds } } } } },
       select: { id: true },
     });
   }

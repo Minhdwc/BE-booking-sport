@@ -26,12 +26,15 @@ export class NotificationProcessor extends WorkerHost {
             userId: job.data.userId,
             title: job.data.title,
             message: job.data.message,
+            type: job.data.type ?? 'system',
           },
         });
 
         this.socket.sendNotificationToUser(job.data.userId, {
           title: job.data.title,
           message: job.data.message,
+          type: notification.type,
+          payload: job.data.payload,
         });
 
         this.logger.log(`Notification created: ${notification.id}`);

@@ -10,6 +10,7 @@ import { QueueService } from '@/infrastructure/queue/queue.service';
 import { SocketGateway } from '@/infrastructure/socket/socket.gateway';
 import { getPagination, PaginationQueryDto, toPaginatedResult } from '@/common/dto/pagination.dto';
 import { JwtPayloadReturn } from '@/utils/jwt.util';
+import { CreateBookingDto } from './bookings.dto';
 import { BookingsRepository } from './bookings.repository';
 
 @Injectable()
@@ -31,7 +32,7 @@ export class BookingsService {
       if (ownedVenueIds.length === 0) {
         return toPaginatedResult([], 0, page, limit);
       }
-      where = { field: { venueId: { in: ownedVenueIds } } };
+      where = { items: { some: { venueId: { in: ownedVenueIds } } } };
     } else {
       where = { userId: user.id };
     }
@@ -41,9 +42,10 @@ export class BookingsService {
       where = {
         ...where,
         OR: [
+          { bookingCode: { contains: search, mode: 'insensitive' } },
           { user: { name: { contains: search, mode: 'insensitive' } } },
           { user: { email: { contains: search, mode: 'insensitive' } } },
-          { field: { name: { contains: search, mode: 'insensitive' } } },
+          { items: { some: { field: { name: { contains: search, mode: 'insensitive' } } } } },
         ],
       };
     }
@@ -69,7 +71,8 @@ export class BookingsService {
 
     if (user.role === 'staff') {
       const ownedVenueIds = await this.bookingsRepository.findOwnedVenueIds(user.id);
-      if (!ownedVenueIds.includes(booking.field.venueId)) {
+      const hasAccess = booking.items.some((item) => ownedVenueIds.includes(item.venueId));
+      if (!hasAccess) {
         throw new ForbiddenException('Bạn chỉ được xem booking thuộc sân của mình');
       }
       return booking;
@@ -82,79 +85,174 @@ export class BookingsService {
     return booking;
   }
 
-  async create(user: JwtPayloadReturn, fieldId: string, timeslotId: string, date: string) {
-    const bookingDate = new Date(date);
-    if (Number.isNaN(bookingDate.getTime())) {
-      throw new BadRequestException('Ngày đặt sân không hợp lệ');
+  async findTimeline(id: string, user: JwtPayloadReturn) {
+    await this.findOne(id, user);
+    return this.bookingsRepository.findTimeline(id);
+  }
+
+  async create(user: JwtPayloadReturn, dto: CreateBookingDto) {
+    const preparedItems: Array<{
+      fieldId: string;
+      venueId: string;
+      date: Date;
+      startTime: Date;
+      endTime: Date;
+      durationMinutes: number;
+      pricePerHour: number;
+      subtotal: number;
+      fieldName: string;
+      venueName: string;
+      venueIdForNotify: string;
+    }> = [];
+
+    for (const item of dto.items) {
+      const bookingDate = new Date(item.date);
+      if (Number.isNaN(bookingDate.getTime())) {
+        throw new BadRequestException('Ngày đặt sân không hợp lệ');
+      }
+
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const bookingDay = new Date(bookingDate);
+      bookingDay.setHours(0, 0, 0, 0);
+      if (bookingDay < today) {
+        throw new BadRequestException('Ngày đặt sân phải lớn hơn hiện tại');
+      }
+
+      const field = await this.bookingsRepository.findFieldById(item.fieldId);
+      if (!field) {
+        throw new NotFoundException('Sân không tồn tại');
+      }
+      if (field.status !== 'active') {
+        throw new BadRequestException(`Sân ${field.name} hiện không nhận đặt lịch`);
+      }
+
+      const startMinutes = this.parseTimeToMinutes(item.startTime);
+      const endMinutes = this.parseTimeToMinutes(item.endTime);
+      if (endMinutes <= startMinutes) {
+        throw new BadRequestException('Giờ kết thúc phải sau giờ bắt đầu');
+      }
+
+      const durationMinutes = endMinutes - startMinutes;
+      if (durationMinutes < field.minDurationMinutes) {
+        throw new BadRequestException(`Thời lượng tối thiểu là ${field.minDurationMinutes} phút`);
+      }
+      if ((durationMinutes - field.minDurationMinutes) % field.durationStepMinutes !== 0) {
+        throw new BadRequestException(
+          `Thời lượng phải theo bước nhảy ${field.durationStepMinutes} phút`,
+        );
+      }
+
+      const openMinutes = this.parseTimeToMinutes(field.venue.openTime);
+      const closeMinutes = this.parseTimeToMinutes(field.venue.closeTime);
+      if (startMinutes < openMinutes || endMinutes > closeMinutes) {
+        throw new BadRequestException('Khung giờ nằm ngoài giờ hoạt động của cơ sở');
+      }
+
+      if (field.venue.restStartTime && field.venue.restEndTime) {
+        const restStart = this.parseTimeToMinutes(field.venue.restStartTime);
+        const restEnd = this.parseTimeToMinutes(field.venue.restEndTime);
+        if (startMinutes < restEnd && endMinutes > restStart) {
+          throw new BadRequestException('Khung giờ trùng giờ nghỉ của cơ sở');
+        }
+      }
+
+      const startTime = this.timeStringToDate(item.startTime);
+      const endTime = this.timeStringToDate(item.endTime);
+      const existingItems = await this.bookingsRepository.findActiveItemsForFieldDate(
+        item.fieldId,
+        bookingDate,
+      );
+
+      const conflict = existingItems.some(
+        (existing) =>
+          existing.startTime.getTime() < endTime.getTime() &&
+          existing.endTime.getTime() > startTime.getTime(),
+      );
+      if (conflict) {
+        throw new ConflictException(`Khung giờ ${item.startTime}–${item.endTime} đã được đặt`);
+      }
+
+      preparedItems.push({
+        fieldId: field.id,
+        venueId: field.venueId,
+        date: bookingDate,
+        startTime,
+        endTime,
+        durationMinutes,
+        pricePerHour: field.price,
+        subtotal: Math.round(field.price * (durationMinutes / 60)),
+        fieldName: field.name,
+        venueName: field.venue.name,
+        venueIdForNotify: field.venueId,
+      });
     }
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const bookingDay = new Date(bookingDate);
-    bookingDay.setHours(0, 0, 0, 0);
-    if (bookingDay < today) {
-      throw new BadRequestException('Ngày đặt sân phải lớn hơn hiện tại');
-    }
-
-    const bookingField = await this.bookingsRepository.findFieldById(fieldId);
-    if (!bookingField) {
-      throw new NotFoundException('Sân không tồn tại');
-    }
-    if (bookingField.status !== 'active') {
-      throw new BadRequestException('Sân hiện không nhận đặt lịch');
-    }
-
-    const bookingTimeslot = await this.bookingsRepository.findTimeslotById(timeslotId);
-    if (!bookingTimeslot) {
-      throw new NotFoundException('Timeslot không tồn tại');
-    }
-
-    const slotTaken = await this.bookingsRepository.findActiveSlot(
-      fieldId,
-      timeslotId,
-      bookingDate,
-    );
-    if (slotTaken) {
-      throw new ConflictException('Khung giờ này đã được đặt');
-    }
-
+    const totalAmount = preparedItems.reduce((sum, item) => sum + item.subtotal, 0);
+    const discountAmount = 0;
+    const finalAmount = totalAmount - discountAmount;
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
 
     const booking = await this.bookingsRepository.create({
       userId: user.id,
-      fieldId,
-      timeslotId,
-      date: bookingDate,
-      status: 'pending',
-      slotLock: 'active',
-      amount: bookingField.price,
+      bookingCode: `BK${Date.now().toString(36).toUpperCase()}${Math.random().toString(36).slice(2, 6).toUpperCase()}`,
+      status: 'waiting_payment',
+      totalAmount,
+      discountAmount,
+      finalAmount,
+      note: dto.note,
       expiresAt,
+      items: preparedItems.map(({ fieldName, venueName, venueIdForNotify, ...item }) => item),
     });
 
     await this.queueService.scheduleBookingExpiry(booking.id);
 
-    const dateStr = booking.date.toISOString().split('T')[0];
+    await this.bookingsRepository.createAuditLog({
+      actorId: user.id,
+      module: 'booking',
+      action: 'booking.created',
+      entityType: 'booking',
+      entityId: booking.id,
+      toValue: booking.status,
+      note: booking.bookingCode,
+    });
 
-    await this.notifyVenueOwners(
-      booking.field.venueId,
-      'Đang giữ chỗ — chờ thanh toán',
-      `Đang có người giữ chỗ ${booking.field.name} của cơ sở ${booking.field.venue.name}, chờ thanh toán (hết hạn ${expiresAt.toISOString()})`,
+    const firstItem = booking.items[0];
+    const dateStr = firstItem?.date.toISOString().split('T')[0] ?? '';
+    const itemSummary = booking.items
+      .map(
+        (item) =>
+          `${item.field.name} (${item.startTime.toISOString().slice(11, 16)}–${item.endTime.toISOString().slice(11, 16)})`,
+      )
+      .join(', ');
+
+    const venueIds = [...new Set(booking.items.map((item) => item.venueId))];
+    await Promise.all(
+      venueIds.map((venueId) =>
+        this.notifyVenueOwners(
+          venueId,
+          'Đang giữ chỗ — chờ thanh toán',
+          `Đang có người giữ chỗ: ${itemSummary}, chờ thanh toán (hết hạn ${expiresAt.toISOString()})`,
+        ),
+      ),
     );
 
     this.socketGateway.sendBookingStatusUpdate(booking.userId, {
       bookingId: booking.id,
       status: booking.status,
-      fieldName: booking.field.name,
+      fieldName: firstItem?.field.name ?? 'Sân',
     });
 
-    this.socketGateway.broadcastToVenue(booking.field.venueId, 'booking:updated', {
-      bookingId: booking.id,
-      status: booking.status,
-      fieldId: booking.fieldId,
-      fieldName: booking.field.name,
-      date: dateStr,
-      expiresAt: expiresAt.toISOString(),
-    });
+    for (const item of booking.items) {
+      this.socketGateway.broadcastToVenue(item.venueId, 'booking:updated', {
+        bookingId: booking.id,
+        status: booking.status,
+        fieldId: item.fieldId,
+        fieldName: item.field.name,
+        date: item.date.toISOString().split('T')[0],
+        expiresAt: expiresAt.toISOString(),
+      });
+    }
 
     return booking;
   }
@@ -175,16 +273,16 @@ export class BookingsService {
       throw new ForbiddenException('Bạn không có quyền cập nhật trạng thái booking');
     }
 
-    if (oldStatus === 'cancelled') {
-      throw new BadRequestException('Không thể cập nhật booking đã hủy');
+    if (oldStatus === 'cancelled' || oldStatus === 'expired') {
+      throw new BadRequestException('Không thể cập nhật booking đã hủy hoặc hết hạn');
     }
 
     if (oldStatus === status) {
       return currentBooking;
     }
 
-    if (status === 'confirmed' && oldStatus !== 'pending') {
-      throw new BadRequestException('Chỉ booking pending mới được confirm');
+    if (status === 'confirmed' && oldStatus !== 'waiting_payment') {
+      throw new BadRequestException('Chỉ booking waiting_payment mới được confirm');
     }
 
     if (status === 'completed' && oldStatus !== 'confirmed') {
@@ -195,6 +293,7 @@ export class BookingsService {
 
     await this.bookingsRepository.createAuditLog({
       actorId: user.id,
+      module: 'booking',
       action: `booking.${status}`,
       entityType: 'booking',
       entityId: booking.id,
@@ -202,33 +301,39 @@ export class BookingsService {
       toValue: status,
     });
 
-    const dateStr = booking.date.toISOString().split('T')[0];
-
     await this.queueService.createNotification(
       booking.userId,
       'Cập nhật trạng thái đặt sân',
-      `Booking của bạn đã đổi từ ${oldStatus} sang ${booking.status}`,
+      `Booking ${booking.bookingCode} đã đổi từ ${oldStatus} sang ${booking.status}`,
     );
 
-    await this.notifyVenueOwners(
-      booking.field.venueId,
-      'Cập nhật booking',
-      `Booking ${booking.field.name} ngày ${dateStr}: ${oldStatus} → ${booking.status}`,
+    const venueIds = [...new Set(booking.items.map((item) => item.venueId))];
+    await Promise.all(
+      venueIds.map((venueId) =>
+        this.notifyVenueOwners(
+          venueId,
+          'Cập nhật booking',
+          `Booking ${booking.bookingCode}: ${oldStatus} → ${booking.status}`,
+        ),
+      ),
     );
 
+    const firstItem = booking.items[0];
     this.socketGateway.sendBookingStatusUpdate(booking.userId, {
       bookingId: booking.id,
       status: booking.status,
-      fieldName: booking.field.name,
+      fieldName: firstItem?.field.name ?? 'Sân',
     });
 
-    this.socketGateway.broadcastToVenue(booking.field.venueId, 'booking:updated', {
-      bookingId: booking.id,
-      status: booking.status,
-      fieldId: booking.fieldId,
-      fieldName: booking.field.name,
-      date: dateStr,
-    });
+    for (const item of booking.items) {
+      this.socketGateway.broadcastToVenue(item.venueId, 'booking:updated', {
+        bookingId: booking.id,
+        status: booking.status,
+        fieldId: item.fieldId,
+        fieldName: item.field.name,
+        date: item.date.toISOString().split('T')[0],
+      });
+    }
 
     return booking;
   }
@@ -237,8 +342,8 @@ export class BookingsService {
     const currentBooking = await this.findOne(id, user);
     const oldStatus = currentBooking.status;
 
-    if (currentBooking.status === 'cancelled') {
-      throw new BadRequestException('Booking đã được hủy');
+    if (currentBooking.status === 'cancelled' || currentBooking.status === 'expired') {
+      throw new BadRequestException('Booking đã được hủy hoặc hết hạn');
     }
 
     if (currentBooking.status === 'completed') {
@@ -257,6 +362,7 @@ export class BookingsService {
 
     await this.bookingsRepository.createAuditLog({
       actorId: user.id,
+      module: 'booking',
       action: 'booking.cancelled',
       entityType: 'booking',
       entityId: booking.id,
@@ -264,38 +370,44 @@ export class BookingsService {
       toValue: 'cancelled',
     });
 
-    const dateStr = booking.date.toISOString().split('T')[0];
-
     await this.queueService.createNotification(
       booking.userId,
       'Cập nhật trạng thái đặt sân',
-      `Booking của bạn đã đổi từ ${oldStatus} sang ${booking.status}`,
+      `Booking ${booking.bookingCode} đã bị hủy`,
     );
 
-    await this.notifyVenueOwners(
-      booking.field.venueId,
-      'Booking đã hủy',
-      `Booking ${booking.field.name} ngày ${dateStr} đã bị hủy`,
+    const venueIds = [...new Set(booking.items.map((item) => item.venueId))];
+    await Promise.all(
+      venueIds.map((venueId) =>
+        this.notifyVenueOwners(
+          venueId,
+          'Booking đã hủy',
+          `Booking ${booking.bookingCode} đã bị hủy`,
+        ),
+      ),
     );
 
+    const firstItem = booking.items[0];
     this.socketGateway.sendBookingStatusUpdate(booking.userId, {
       bookingId: booking.id,
       status: booking.status,
-      fieldName: booking.field.name,
+      fieldName: firstItem?.field.name ?? 'Sân',
     });
 
-    this.socketGateway.broadcastToVenue(booking.field.venueId, 'booking:updated', {
-      bookingId: booking.id,
-      status: booking.status,
-      fieldId: booking.fieldId,
-      fieldName: booking.field.name,
-      date: dateStr,
-    });
+    for (const item of booking.items) {
+      this.socketGateway.broadcastToVenue(item.venueId, 'booking:updated', {
+        bookingId: booking.id,
+        status: booking.status,
+        fieldId: item.fieldId,
+        fieldName: item.field.name,
+        date: item.date.toISOString().split('T')[0],
+      });
+    }
 
     await this.queueService.sendBookingCancelledEmail(booking.user.email, {
       name: booking.user.name,
-      fieldName: booking.field.name,
-      date: dateStr,
+      fieldName: firstItem?.field.name ?? 'Sân',
+      date: firstItem?.date.toISOString().split('T')[0] ?? '',
     });
 
     return booking;
@@ -308,6 +420,22 @@ export class BookingsService {
 
     await this.findOne(id, user);
     return this.bookingsRepository.delete(id);
+  }
+
+  private parseTimeToMinutes(time: string) {
+    const normalized = time.trim().slice(0, 5);
+    const [hours, minutes] = normalized.split(':').map(Number);
+    if (Number.isNaN(hours) || Number.isNaN(minutes)) {
+      throw new BadRequestException(`Thời gian không hợp lệ: ${time}`);
+    }
+    return hours * 60 + minutes;
+  }
+
+  private timeStringToDate(time: string) {
+    const minutes = this.parseTimeToMinutes(time);
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    return new Date(Date.UTC(1970, 0, 1, hours, mins, 0, 0));
   }
 
   private async notifyVenueOwners(venueId: string, title: string, message: string) {

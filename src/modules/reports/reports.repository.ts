@@ -7,25 +7,25 @@ export class ReportsRepository {
   constructor(private readonly prisma: PrismaService) {}
 
   getSummaryData(bookingWhere: Prisma.BookingWhereInput, paymentWhere: Prisma.PaymentWhereInput) {
-    return Promise.all([
-      this.prisma.booking.groupBy({
-        by: ['status'],
-        where: bookingWhere,
-        _count: { _all: true },
-      }),
-      this.prisma.payment.aggregate({
-        where: paymentWhere,
-        _sum: { amount: true },
-        _count: { _all: true },
-      }),
-      this.prisma.booking.groupBy({
-        by: ['fieldId'],
-        where: bookingWhere,
-        _count: { _all: true },
-        orderBy: { _count: { fieldId: 'desc' } },
-        take: 5,
-      }),
-    ]);
+    const bookingsByStatus = this.prisma.booking.groupBy({
+      by: ['status'],
+      where: bookingWhere,
+      _count: { _all: true },
+    });
+    const revenueAgg = this.prisma.payment.aggregate({
+      where: paymentWhere,
+      _sum: { amount: true },
+      _count: { _all: true },
+    });
+    const topFields = this.prisma.bookingItem.groupBy({
+      by: ['fieldId'],
+      where: { booking: bookingWhere, status: 'active' },
+      _count: { _all: true },
+      orderBy: { _count: { fieldId: 'desc' } },
+      take: 5,
+    });
+
+    return Promise.all([bookingsByStatus, revenueAgg, topFields]);
   }
 
   findSuccessfulPayments(paymentWhere: Prisma.PaymentWhereInput) {
@@ -37,10 +37,14 @@ export class ReportsRepository {
         createdAt: true,
         booking: {
           select: {
-            field: {
+            items: {
               select: {
-                sportId: true,
-                sport: { select: { id: true, name: true } },
+                field: {
+                  select: {
+                    sportId: true,
+                    sport: { select: { id: true, name: true } },
+                  },
+                },
               },
             },
           },

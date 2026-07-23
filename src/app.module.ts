@@ -16,13 +16,17 @@ import { BookingsModule } from './modules/bookings/bookings.module';
 import { FavoritesModule } from './modules/favorites/favorites.module';
 import { FieldsModule } from './modules/fields/fields.module';
 import { HealthModule } from './modules/health/health.module';
+import { DashboardModule } from './modules/dashboard/dashboard.module';
+import { SearchModule } from './modules/search/search.module';
+import { AnalyticsModule } from './modules/analytics/analytics.module';
+import { ChatModule } from './modules/chat/chat.module';
+import { ElasticsearchModule } from '@/infrastructure/elasticsearch/elasticsearch.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { PaymentMethodsModule } from './modules/payment-methods/payment-methods.module';
 import { PaymentsModule } from './modules/payments/payments.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { ReviewsModule } from './modules/reviews/reviews.module';
 import { SportsModule } from './modules/sports/sports.module';
-import { TimeslotsModule } from './modules/timeslots/timeslots.module';
 import { UploadsModule } from './modules/uploads/uploads.module';
 import { UserPaymentMethodsModule } from './modules/user-payment-methods/user-payment-methods.module';
 import { UsersModule } from './modules/users/users.module';
@@ -36,6 +40,7 @@ import { VenuesModule } from './modules/venues/venues.module';
     CommonModule,
     PrismaModule,
     RedisModule,
+    ElasticsearchModule,
     MailModule,
     QueueModule,
     SocketModule,
@@ -47,7 +52,6 @@ import { VenuesModule } from './modules/venues/venues.module';
     SportsModule,
     PaymentMethodsModule,
     VenuesModule,
-    TimeslotsModule,
     FieldsModule,
     FavoritesModule,
     ReviewsModule,
@@ -60,6 +64,10 @@ import { VenuesModule } from './modules/venues/venues.module';
     NotificationsModule,
     UploadsModule,
     ReportsModule,
+    DashboardModule,
+    SearchModule,
+    AnalyticsModule,
+    ChatModule,
     AuditLogsModule,
     HealthModule,
   ],

@@ -1,7 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '@/database/prisma.service';
-
 @Injectable()
 export class BookingsRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -15,10 +14,12 @@ export class BookingsRepository {
         user: {
           select: { id: true, name: true, email: true, phone: true },
         },
-        field: {
-          include: { sport: true, venue: true },
+        items: {
+          include: {
+            field: { include: { sport: true, venue: true } },
+            venue: true,
+          },
         },
-        timeslot: true,
         payments: true,
       },
       orderBy: { createdAt: 'desc' },
@@ -36,10 +37,12 @@ export class BookingsRepository {
         user: {
           select: { id: true, name: true, email: true, phone: true },
         },
-        field: {
-          include: { sport: true, venue: true },
+        items: {
+          include: {
+            field: { include: { sport: true, venue: true } },
+            venue: true,
+          },
         },
-        timeslot: true,
         payments: true,
       },
     });
@@ -60,28 +63,70 @@ export class BookingsRepository {
     });
   }
 
-  findTimeslotById(id: string) {
-    return this.prisma.timeslot.findUnique({ where: { id } });
-  }
-
-  findActiveSlot(fieldId: string, timeslotId: string, date: Date) {
-    return this.prisma.booking.findFirst({
-      where: { fieldId, timeslotId, date, slotLock: 'active' },
-      select: { id: true },
+  findActiveItemsForFieldDate(fieldId: string, date: Date, excludeBookingId?: string) {
+    return this.prisma.bookingItem.findMany({
+      where: {
+        fieldId,
+        date,
+        status: 'active',
+        booking: {
+          status: { in: ['waiting_payment', 'confirmed', 'completed'] },
+          ...(excludeBookingId ? { id: { not: excludeBookingId } } : {}),
+        },
+      },
+      select: {
+        id: true,
+        startTime: true,
+        endTime: true,
+        bookingId: true,
+      },
     });
   }
 
-  create(data: Prisma.BookingUncheckedCreateInput) {
+  create(data: {
+    userId: string;
+    bookingCode: string;
+    status: string;
+    totalAmount: number;
+    discountAmount: number;
+    finalAmount: number;
+    note?: string;
+    expiresAt: Date;
+    items: Array<{
+      fieldId: string;
+      venueId: string;
+      date: Date;
+      startTime: Date;
+      endTime: Date;
+      durationMinutes: number;
+      pricePerHour: number;
+      subtotal: number;
+    }>;
+  }) {
     return this.prisma.booking.create({
-      data,
+      data: {
+        userId: data.userId,
+        bookingCode: data.bookingCode,
+        status: data.status,
+        totalAmount: data.totalAmount,
+        discountAmount: data.discountAmount,
+        finalAmount: data.finalAmount,
+        note: data.note,
+        expiresAt: data.expiresAt,
+        items: {
+          create: data.items,
+        },
+      },
       include: {
         user: {
           select: { id: true, name: true, email: true, phone: true },
         },
-        field: {
-          include: { sport: true, venue: true },
+        items: {
+          include: {
+            field: { include: { sport: true, venue: true } },
+            venue: true,
+          },
         },
-        timeslot: true,
         payments: true,
       },
     });
@@ -95,29 +140,67 @@ export class BookingsRepository {
         user: {
           select: { id: true, name: true, email: true, phone: true },
         },
-        field: {
-          include: { sport: true, venue: true },
+        items: {
+          include: {
+            field: { include: { sport: true, venue: true } },
+            venue: true,
+          },
         },
-        timeslot: true,
         payments: true,
       },
     });
   }
 
   cancel(id: string) {
-    return this.prisma.booking.update({
-      where: { id },
-      data: { status: 'cancelled', slotLock: null },
-      include: {
-        user: {
-          select: { id: true, name: true, email: true, phone: true },
+    return this.prisma.$transaction(async (tx) => {
+      await tx.bookingItem.updateMany({
+        where: { bookingId: id },
+        data: { status: 'cancelled' },
+      });
+
+      return tx.booking.update({
+        where: { id },
+        data: { status: 'cancelled' },
+        include: {
+          user: {
+            select: { id: true, name: true, email: true, phone: true },
+          },
+          items: {
+            include: { field: { include: { sport: true, venue: true } }, venue: true },
+          },
+          payments: true,
         },
-        field: {
-          include: { sport: true, venue: true },
+      });
+    });
+  }
+
+  expire(id: string) {
+    return this.prisma.$transaction(async (tx) => {
+      await tx.bookingItem.updateMany({
+        where: { bookingId: id },
+        data: { status: 'cancelled' },
+      });
+
+      return tx.booking.update({
+        where: { id },
+        data: { status: 'expired' },
+        include: {
+          user: {
+            select: { id: true, name: true, email: true, phone: true },
+          },
+          items: {
+            include: { field: { include: { sport: true, venue: true } }, venue: true },
+          },
+          payments: true,
         },
-        timeslot: true,
-        payments: true,
-      },
+      });
+    });
+  }
+
+  findTimeline(bookingId: string) {
+    return this.prisma.auditLog.findMany({
+      where: { entityType: 'booking', entityId: bookingId },
+      orderBy: { createdAt: 'asc' },
     });
   }
 

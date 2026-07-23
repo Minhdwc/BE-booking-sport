@@ -6,7 +6,15 @@ import {
   BookingCancelledData,
   NewBookingOwnerData,
 } from '@/infrastructure/mail/mail.service';
-import { BOOKING_JOBS, EMAIL_JOBS, NOTIFICATION_JOBS, QUEUE_NAMES } from './queue.constants';
+import {
+  BOOKING_JOBS,
+  ELASTIC_JOBS,
+  EMAIL_JOBS,
+  NOTIFICATION_JOBS,
+  PAYMENT_JOBS,
+  QUEUE_NAMES,
+  STATISTIC_JOBS,
+} from './queue.constants';
 
 @Injectable()
 export class QueueService {
@@ -14,6 +22,9 @@ export class QueueService {
     @InjectQueue(QUEUE_NAMES.EMAIL) private readonly emailQueue: Queue,
     @InjectQueue(QUEUE_NAMES.NOTIFICATION) private readonly notificationQueue: Queue,
     @InjectQueue(QUEUE_NAMES.BOOKING) private readonly bookingQueue: Queue,
+    @InjectQueue(QUEUE_NAMES.PAYMENT) private readonly paymentQueue: Queue,
+    @InjectQueue(QUEUE_NAMES.ELASTIC) private readonly elasticQueue: Queue,
+    @InjectQueue(QUEUE_NAMES.STATISTIC) private readonly statisticQueue: Queue,
   ) {}
 
   async sendBookingConfirmationEmail(to: string, payload: BookingConfirmationData) {
@@ -59,10 +70,15 @@ export class QueueService {
     );
   }
 
-  async createNotification(userId: string, title: string, message: string) {
+  async createNotification(
+    userId: string,
+    title: string,
+    message: string,
+    options?: { type?: string; payload?: any },
+  ) {
     await this.notificationQueue.add(
       NOTIFICATION_JOBS.CREATE,
-      { userId, title, message },
+      { userId, title, message, type: options?.type, payload: options?.payload },
       { attempts: 3 },
     );
   }
@@ -85,5 +101,49 @@ export class QueueService {
     if (job) {
       await job.remove();
     }
+  }
+
+  async enqueuePaymentWebhook(paymentId: string, payload: any) {
+    await this.paymentQueue.add(
+      PAYMENT_JOBS.PROCESS_WEBHOOK,
+      { paymentId, payload },
+      { attempts: 3, backoff: { type: 'exponential', delay: 3000 } },
+    );
+  }
+
+  async syncVenueToElastic(venueId: string) {
+    await this.elasticQueue.add(
+      ELASTIC_JOBS.SYNC_VENUE,
+      { venueId },
+      { attempts: 3, backoff: { type: 'exponential', delay: 2000 } },
+    );
+  }
+
+  async deleteVenueFromElastic(venueId: string) {
+    await this.elasticQueue.add(
+      ELASTIC_JOBS.DELETE_VENUE,
+      { venueId },
+      { attempts: 3 },
+    );
+  }
+
+  async recordPaymentStatistic(paymentId: string) {
+    await this.statisticQueue.add(
+      STATISTIC_JOBS.PAYMENT_SUCCESS,
+      { paymentId },
+      { attempts: 3, backoff: { type: 'exponential', delay: 2000 } },
+    );
+  }
+
+  async recordReviewChanged(venueId: string) {
+    await this.statisticQueue.add(STATISTIC_JOBS.REVIEW_CHANGED, { venueId }, { attempts: 3 });
+  }
+
+  async recordFavoriteToggled(venueId: string, delta: number) {
+    await this.statisticQueue.add(STATISTIC_JOBS.FAVORITE_TOGGLED, { venueId, delta }, { attempts: 3 });
+  }
+
+  async recordVenueView(venueId: string) {
+    await this.statisticQueue.add(STATISTIC_JOBS.VENUE_VIEW, { venueId }, { attempts: 2 });
   }
 }

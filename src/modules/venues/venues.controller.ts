@@ -21,10 +21,14 @@ import { RolesGuard } from '@/common/guards';
 import { JwtPayloadReturn } from '@/utils/jwt.util';
 import { DTOAddVenueOwner, DTOCreateVenue, DTOUpdateVenue } from './venues.dto';
 import { VenuesService } from './venues.service';
+import { SearchService } from '@/modules/search/search.service';
 
 @Controller('venues')
 export class VenuesController {
-  constructor(private readonly venuesService: VenuesService) {}
+  constructor(
+    private readonly venuesService: VenuesService,
+    private readonly searchService: SearchService,
+  ) {}
 
   @Public()
   @Get()
@@ -41,8 +45,12 @@ export class VenuesController {
 
   @Public()
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.venuesService.findOne(id);
+  async findOne(@Param('id') id: string, @CurrentUser() user?: JwtPayloadReturn) {
+    const venue = await this.venuesService.findOne(id, { trackView: true });
+    if (user?.id) {
+      void this.searchService.addRecentlyViewed(user.id, id);
+    }
+    return venue;
   }
 
   @Post()

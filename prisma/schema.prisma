@@ -8,25 +8,47 @@ datasource db {
 }
 
 model Booking {
-  id         String    @id @default(uuid())
-  userId     String
-  fieldId    String
-  timeslotId String
-  date       DateTime  @db.Date
-  status     String    @default("pending") // pending, confirmed, cancelled, completed
-  slotLock   String?   @default("active") @map("slot_lock")
-  amount     Int
-  expiresAt  DateTime?
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @default(now())
-  field      Field     @relation(fields: [fieldId], references: [id], onDelete: Cascade, map: "bookings_fieldId_fields_id_fk")
-  timeslot   Timeslot  @relation(fields: [timeslotId], references: [id], onDelete: Cascade, map: "bookings_timeslotId_timeslots_id_fk")
-  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade, map: "bookings_userId_users_id_fk")
-  payments   Payment[]
+  id             String        @id @default(uuid())
+  userId         String        @map("user_id")
+  bookingCode    String        @unique @map("booking_code")
+  status         String        @default("waiting_payment") // waiting_payment, confirmed, completed, cancelled, expired
+  totalAmount    Int           @map("total_amount")
+  discountAmount Int           @default(0) @map("discount_amount")
+  finalAmount    Int           @map("final_amount")
+  note           String?
+  expiresAt      DateTime?     @map("expires_at")
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade, map: "bookings_userId_users_id_fk")
+  items          BookingItem[]
+  payments       Payment[]
 
-  @@unique([fieldId, date, timeslotId, slotLock], map: "unique_booking")
-  @@index([userId, fieldId, date])
+  @@index([userId])
+  @@index([status])
   @@map("bookings")
+}
+
+model BookingItem {
+  id              String   @id @default(uuid())
+  bookingId       String   @map("booking_id")
+  fieldId         String   @map("field_id")
+  venueId         String   @map("venue_id")
+  date            DateTime @db.Date
+  startTime       DateTime @map("start_time") @db.Time(6)
+  endTime         DateTime @map("end_time") @db.Time(6)
+  durationMinutes Int      @map("duration_minutes")
+  pricePerHour    Int      @map("price_per_hour")
+  subtotal        Int
+  status          String   @default("active") // active, cancelled
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  booking         Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  field           Field    @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+  venue           Venue    @relation(fields: [venueId], references: [id], onDelete: Cascade)
+
+  @@index([fieldId, date])
+  @@index([bookingId])
+  @@map("booking_items")
 }
 
 model Field {
@@ -37,43 +59,49 @@ model Field {
   minDurationMinutes  Int           @default(60)
   durationStepMinutes Int           @default(30)
   status              String        @default("active") // active, inactive
+  maintenanceReason   String?       @map("maintenance_reason")
+  bookingCount        Int           @default(0) @map("booking_count")
+  viewCount           Int           @default(0) @map("view_count")
   sportId             String
   venueId             String
   createdAt           DateTime      @default(now()) @map("created_at")
   updatedAt           DateTime      @updatedAt @map("updated_at")
-  bookings            Booking[]
+  bookingItems        BookingItem[]
   sport               Sport         @relation(fields: [sportId], references: [id], onDelete: Cascade, map: "fields_sportId_sports_id_fk")
   venue               Venue         @relation(fields: [venueId], references: [id], onDelete: Cascade, map: "fields_venueId_venues_id_fk")
-  reviews             Review[]
   fieldImages         FieldImages[]
-  fieldFavorites      UserFieldFavorite[]
 
   @@index([venueId, sportId, status])
   @@map("fields")
 }
 
 model Notification {
-  id        String   @id @default(uuid())
-  userId    String
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  type      String    @default("system")
   title     String
   message   String
-  isRead    Boolean  @default(false)
-  createdAt DateTime @default(now()) @map("created_at")
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade, map: "notifications_userId_users_id_fk")
+  isRead    Boolean   @default(false) @map("is_read")
+  readAt    DateTime? @map("read_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade, map: "notifications_userId_users_id_fk")
 
+  @@index([userId, isRead])
   @@map("notifications")
 }
 
 model Payment {
   id                    String               @id @default(uuid())
-  bookingId             String
+  bookingId             String               @map("booking_id")
   amount                Int
+  gateway               String?              @default("vnpay")
   method                String               @default("bank_transfer") // bank_transfer, momo, zalopay, vnpay
   status                String               @default("pending") // pending, success, failed, cancelled, refunded
-  transactionCode       String?
-  paidAt                DateTime?
-  venuePaymentAccountId String?
-  gatewayResponse       Json?
+  transactionCode       String?              @map("transaction_code")
+  retryCount            Int                  @default(0) @map("retry_count")
+  paidAt                DateTime?            @map("paid_at")
+  venuePaymentAccountId String?              @map("venue_payment_account_id")
+  gatewayResponse       Json?                @map("gateway_response")
   createdAt             DateTime             @default(now()) @map("created_at")
   updatedAt             DateTime             @updatedAt @map("updated_at")
   booking               Booking              @relation(fields: [bookingId], references: [id], onDelete: Cascade, map: "payments_bookingId_bookings_id_fk")
@@ -84,14 +112,16 @@ model Payment {
 
 model Review {
   id        String   @id @default(uuid())
-  userId    String
-  fieldId   String
+  userId    String   @map("user_id")
+  venueId   String   @map("venue_id")
   rating    Int
   comment   String?
   createdAt DateTime @default(now()) @map("created_at")
-  field     Field    @relation(fields: [fieldId], references: [id], onDelete: Cascade, map: "reviews_fieldId_fields_id_fk")
+  venue     Venue    @relation(fields: [venueId], references: [id], onDelete: Cascade)
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade, map: "reviews_userId_users_id_fk")
 
+  @@unique([userId, venueId])
+  @@index([venueId])
   @@map("reviews")
 }
 
@@ -119,17 +149,6 @@ model VenueSport {
 
   @@unique([venueId, sportId])
   @@map("venue_sports")
-}
-
-model Timeslot {
-  id        String    @id @default(uuid())
-  startTime DateTime  @map("startTime") @db.Time(6)
-  endTime   DateTime  @map("endTime") @db.Time(6)
-  createdAt DateTime  @default(now()) @map("created_at")
-  bookings  Booking[]
-
-  @@unique([startTime, endTime], map: "unique_timeslot_range")
-  @@map("timeslots")
 }
 
 model UserPaymentMethod {
@@ -180,8 +199,9 @@ model User {
   reviews        Review[]
   venueOwners    VenueOwner[]
   paymentMethods UserPaymentMethod[]
-  fieldFavorites UserFieldFavorite[]
   venueFavorites UserVenueFavorite[]
+  chatConversations ChatConversation[]
+  chatMessages      ChatMessage[]
 
   @@map("users")
 }
@@ -218,15 +238,23 @@ model Venue {
   restStartTime   String?
   restEndTime     String?
   description     String?
+  ratingAverage   Float                 @default(0) @map("rating_average")
+  ratingCount     Int                   @default(0) @map("rating_count")
+  bookingCount    Int                   @default(0) @map("booking_count")
+  favoriteCount   Int                   @default(0) @map("favorite_count")
+  viewCount       Int                   @default(0) @map("view_count")
   createdAt       DateTime              @default(now()) @map("created_at")
   updatedAt       DateTime              @updatedAt @map("updated_at")
   fields          Field[]
+  bookingItems    BookingItem[]
   venueOwners     VenueOwner[]
   venueImages     VenueImages[]
   paymentAccounts VenuePaymentAccount[]
   venueAmenities  VenueAmenities[]
   venueSports     VenueSport[]
   venueFavorites  UserVenueFavorite[]
+  reviews         Review[]
+  chatConversations ChatConversation[]
 
   @@map("venues")
 }
@@ -246,17 +274,21 @@ model VenueOwner {
 
 model AuditLog {
   id         String   @id @default(uuid())
-  actorId    String?
+  actorId    String?  @map("actor_id")
+  module     String?
   action     String
-  entityType String
-  entityId   String
-  fromValue  String?
-  toValue    String?
+  entityType String   @map("entity_type")
+  entityId   String   @map("entity_id")
+  fromValue  String?  @map("from_value")
+  toValue    String?  @map("to_value")
   note       String?
+  ip         String?
+  userAgent  String?  @map("user_agent")
   createdAt  DateTime @default(now()) @map("created_at")
 
   @@index([entityType, entityId])
   @@index([actorId])
+  @@index([module])
   @@map("audit_logs")
 }
 
@@ -309,19 +341,6 @@ model VenueAmenities {
   @@map("venue_amenities")
 }
 
-model UserFieldFavorite {
-  id        String   @id @default(uuid())
-  userId    String   @map("user_id")
-  fieldId   String   @map("field_id")
-  createdAt DateTime @default(now()) @map("created_at")
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  field     Field    @relation(fields: [fieldId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, fieldId])
-  @@index([userId])
-  @@map("user_field_favorites")
-}
-
 model UserVenueFavorite {
   id        String   @id @default(uuid())
   userId    String   @map("user_id")
@@ -333,4 +352,35 @@ model UserVenueFavorite {
   @@unique([userId, venueId])
   @@index([userId])
   @@map("user_venue_favorites")
+}
+
+model ChatConversation {
+  id            String        @id @default(uuid())
+  userId        String        @map("user_id")
+  venueId       String        @map("venue_id")
+  lastMessageAt DateTime?     @map("last_message_at")
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  venue         Venue         @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  messages      ChatMessage[]
+
+  @@unique([userId, venueId])
+  @@index([userId])
+  @@index([venueId])
+  @@map("chat_conversations")
+}
+
+model ChatMessage {
+  id             String           @id @default(uuid())
+  conversationId String           @map("conversation_id")
+  senderId       String           @map("sender_id")
+  content        String
+  isRead         Boolean          @default(false) @map("is_read")
+  createdAt      DateTime         @default(now()) @map("created_at")
+  conversation   ChatConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender         User             @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+  @@map("chat_messages")
 }

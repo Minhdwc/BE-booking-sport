@@ -130,7 +130,7 @@ export class VenuesRepository {
 
   async hasBookings(venueId: string) {
     const count = await this.prisma.booking.count({
-      where: { field: { venueId } },
+      where: { items: { some: { venueId } } },
     });
     return count > 0;
   }

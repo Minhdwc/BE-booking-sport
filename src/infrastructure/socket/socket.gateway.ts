@@ -77,9 +77,28 @@ export class SocketGateway implements OnGatewayInit, OnGatewayConnection, OnGate
     client.leave(`venue:${venueId}`);
   }
 
+  @SubscribeMessage('join-conversation')
+  handleJoinConversation(client: Socket, conversationId: string) {
+    if (!client.data.userId || !conversationId) {
+      return;
+    }
+
+    client.join(`chat:${conversationId}`);
+    this.logger.log(`Client ${client.id} joined chat room: ${conversationId}`);
+  }
+
+  @SubscribeMessage('leave-conversation')
+  handleLeaveConversation(client: Socket, conversationId: string) {
+    client.leave(`chat:${conversationId}`);
+  }
+
+  emitChatMessage(conversationId: string, message: any) {
+    this.server.to(`chat:${conversationId}`).emit('chat:message', message);
+  }
+
   sendNotificationToUser(
     userId: string,
-    payload: { title: string; message: string; type?: string },
+    payload: { title: string; message: string; type?: string; payload?: any },
   ) {
     this.server.to(`user:${userId}`).emit('notification', payload);
   }

@@ -15,8 +15,12 @@ export class PaymentsRepository {
         booking: {
           include: {
             user: { select: { id: true, name: true, email: true, phone: true } },
-            field: { include: { venue: true } },
-            timeslot: true,
+            items: {
+              include: {
+                field: { include: { venue: true } },
+                venue: true,
+              },
+            },
           },
         },
       },
@@ -35,8 +39,12 @@ export class PaymentsRepository {
         booking: {
           include: {
             user: { select: { id: true, name: true, email: true, phone: true } },
-            field: { include: { venue: true } },
-            timeslot: true,
+            items: {
+              include: {
+                field: { include: { venue: true } },
+                venue: true,
+              },
+            },
           },
         },
       },
@@ -54,7 +62,14 @@ export class PaymentsRepository {
   findBookingById(id: string) {
     return this.prisma.booking.findUnique({
       where: { id },
-      include: { field: { select: { venueId: true, price: true } } },
+      select: {
+        id: true,
+        userId: true,
+        status: true,
+        finalAmount: true,
+        expiresAt: true,
+        items: { include: { field: { select: { venueId: true } } } },
+      },
     });
   }
 
@@ -66,8 +81,12 @@ export class PaymentsRepository {
         booking: {
           include: {
             user: { select: { id: true, name: true, email: true, phone: true } },
-            field: { include: { venue: true } },
-            timeslot: true,
+            items: {
+              include: {
+                field: { include: { venue: true } },
+                venue: true,
+              },
+            },
           },
         },
       },
@@ -88,8 +107,12 @@ export class PaymentsRepository {
         booking: {
           include: {
             user: { select: { id: true, name: true, email: true, phone: true } },
-            field: { include: { venue: true } },
-            timeslot: true,
+            items: {
+              include: {
+                field: { include: { venue: true } },
+                venue: true,
+              },
+            },
           },
         },
       },
@@ -104,8 +127,12 @@ export class PaymentsRepository {
         booking: {
           include: {
             user: { select: { id: true, name: true, email: true, phone: true } },
-            field: { include: { venue: true } },
-            timeslot: true,
+            items: {
+              include: {
+                field: { include: { venue: true } },
+                venue: true,
+              },
+            },
           },
         },
       },
@@ -130,6 +157,13 @@ export class PaymentsRepository {
     });
   }
 
+  incrementRetryCount(id: string) {
+    return this.prisma.payment.update({
+      where: { id },
+      data: { retryCount: { increment: 1 } },
+    });
+  }
+
   markSuccess(
     id: string,
     transactionCode: string,
@@ -142,15 +176,20 @@ export class PaymentsRepository {
         status: 'success',
         transactionCode,
         paidAt: new Date(),
-        method: method ?? 'vnpay',
+        gateway: 'vnpay',
+        method: method,
         ...(gatewayResponse && { gatewayResponse }),
       },
       include: {
         booking: {
           include: {
             user: { select: { id: true, name: true, email: true, phone: true } },
-            field: { include: { venue: true } },
-            timeslot: true,
+            items: {
+              include: {
+                field: { include: { venue: true } },
+                venue: true,
+              },
+            },
           },
         },
         venuePaymentAccount: true,

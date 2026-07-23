@@ -4,19 +4,26 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { getPagination, PaginationQueryDto, toPaginatedResult } from '@/common/dto/pagination.dto';
+import { getPagination, toPaginatedResult } from '@/common/dto/pagination.dto';
 import { JwtPayloadReturn } from '@/utils/jwt.util';
 import { ReviewsRepository } from './reviews.repository';
+import { QueueService } from '@/infrastructure/queue/queue.service';
+
+import { ReviewListQueryDto } from './reviews.dto';
 
 @Injectable()
 export class ReviewsService {
-  constructor(private readonly reviewsRepository: ReviewsRepository) {}
+  constructor(
+    private readonly reviewsRepository: ReviewsRepository,
+    private readonly queueService: QueueService,
+  ) {}
 
-  async findAll(query: PaginationQueryDto = {}) {
+  async findAll(query: ReviewListQueryDto = {}) {
     const { page, limit, skip } = getPagination(query);
+    const where = query.venueId ? { venueId: query.venueId } : undefined;
     const [data, total] = await Promise.all([
-      this.reviewsRepository.findAll(undefined, skip, limit),
-      this.reviewsRepository.count(),
+      this.reviewsRepository.findAll(where, skip, limit),
+      this.reviewsRepository.count(where),
     ]);
     return toPaginatedResult(data, total, page, limit);
   }
@@ -31,28 +38,28 @@ export class ReviewsService {
     return review;
   }
 
-  async getEligibility(user: JwtPayloadReturn, fieldId: string) {
-    const field = await this.reviewsRepository.findFieldById(fieldId);
-    if (!field) {
-      throw new NotFoundException('Field không tồn tại');
+  async getEligibility(user: JwtPayloadReturn, venueId: string) {
+    const venue = await this.reviewsRepository.findVenueById(venueId);
+    if (!venue) {
+      throw new NotFoundException('Cơ sở không tồn tại');
     }
 
-    const existingReview = await this.reviewsRepository.findByUserAndField(user.id, fieldId);
+    const existingReview = await this.reviewsRepository.findByUserAndVenue(user.id, venueId);
     if (existingReview) {
       return {
         canReview: false,
         reason: 'already_reviewed' as const,
-        message: 'Bạn đã đánh giá sân này rồi',
+        message: 'Bạn đã đánh giá cơ sở này rồi',
       };
     }
 
-    const confirmedBooking = await this.reviewsRepository.hasConfirmedBooking(user.id, fieldId);
+    const confirmedBooking = await this.reviewsRepository.hasConfirmedBooking(user.id, venueId);
     if (!confirmedBooking) {
       return {
         canReview: false,
         reason: 'no_confirmed_booking' as const,
         message:
-          'Bạn cần có ít nhất một lần đặt sân đã xác nhận tại sân này trước khi viết đánh giá',
+          'Bạn cần có ít nhất một lần đặt sân đã xác nhận tại cơ sở này trước khi viết đánh giá',
       };
     }
 
@@ -63,18 +70,21 @@ export class ReviewsService {
     };
   }
 
-  async create(user: JwtPayloadReturn, fieldId: string, rating: number, comment?: string) {
-    const eligibility = await this.getEligibility(user, fieldId);
+  async create(user: JwtPayloadReturn, venueId: string, rating: number, comment?: string) {
+    const eligibility = await this.getEligibility(user, venueId);
     if (!eligibility.canReview) {
-      throw new BadRequestException(eligibility.message ?? 'Bạn không thể đánh giá sân này');
+      throw new BadRequestException(eligibility.message ?? 'Bạn không thể đánh giá cơ sở này');
     }
 
-    return this.reviewsRepository.create({
+    const review = await this.reviewsRepository.create({
       userId: user.id,
-      fieldId,
+      venueId,
       rating,
       comment,
     });
+
+    await this.queueService.recordReviewChanged(venueId);
+    return review;
   }
 
   async update(
@@ -91,7 +101,9 @@ export class ReviewsService {
       throw new ForbiddenException('Bạn không có quyền sửa review này');
     }
 
-    return this.reviewsRepository.update(id, data);
+    const updated = await this.reviewsRepository.update(id, data);
+    await this.queueService.recordReviewChanged(review.venueId);
+    return updated;
   }
 
   async remove(id: string, user: JwtPayloadReturn) {
@@ -104,6 +116,8 @@ export class ReviewsService {
       throw new ForbiddenException('Bạn không có quyền xóa review này');
     }
 
-    return this.reviewsRepository.delete(id);
+    const deleted = await this.reviewsRepository.delete(id);
+    await this.queueService.recordReviewChanged(review.venueId);
+    return deleted;
   }
 }

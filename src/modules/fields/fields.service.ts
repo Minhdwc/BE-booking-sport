@@ -7,6 +7,9 @@ import {
 import { Prisma } from '@prisma/client';
 import { getPagination, toPaginatedResult } from '@/common/dto/pagination.dto';
 import { S3Service } from '@/infrastructure/aws/s3.service';
+import { QueueService } from '@/infrastructure/queue/queue.service';
+import { RedisService } from '@/infrastructure/redis/redis.service';
+import { CACHE_KEYS, CACHE_TTL, hashQuery } from '@/common/cache/cache.constants';
 import { JwtPayloadReturn } from '@/utils/jwt.util';
 import { CreateFieldDto, FindAllFieldsQueryDto, UpdateFieldDto } from './fields.dto';
 import { FieldsRepository } from './fields.repository';
@@ -16,6 +19,8 @@ export class FieldsService {
   constructor(
     private readonly fieldsRepository: FieldsRepository,
     private readonly s3Service: S3Service,
+    private readonly redis: RedisService,
+    private readonly queueService: QueueService,
   ) {}
 
   async findAll(user?: JwtPayloadReturn, query: FindAllFieldsQueryDto = {}) {
@@ -63,15 +68,55 @@ export class FieldsService {
       ];
     }
 
+    const cacheKey = CACHE_KEYS.fieldList(
+      hashQuery({
+        page,
+        limit,
+        venueId: query.venueId ?? '',
+        sportId: query.sportId ?? '',
+        search: query.search ?? '',
+        role: user?.role ?? 'public',
+      }),
+    );
+    const cached = await this.redis.getJson<any>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
     const [data, total] = await Promise.all([
       this.fieldsRepository.findAll(where, skip, limit),
       this.fieldsRepository.count(where),
     ]);
 
-    return toPaginatedResult(data, total, page, limit);
+    const result = toPaginatedResult(data, total, page, limit);
+    await this.redis.setJson(cacheKey, result, CACHE_TTL.fieldList);
+    return result;
+  }
+
+  private async invalidateFieldCache(fieldId?: string, venueId?: string) {
+    await this.redis.invalidatePattern(CACHE_KEYS.fieldListPattern);
+    if (fieldId) {
+      await this.redis.del(CACHE_KEYS.fieldDetail(fieldId));
+    }
+    if (venueId) {
+      await this.redis.del(CACHE_KEYS.venueDetail(venueId));
+      await this.redis.invalidatePattern(CACHE_KEYS.venueListPattern);
+    }
   }
 
   async findOne(id: string, user?: JwtPayloadReturn) {
+    const cacheKey = CACHE_KEYS.fieldDetail(id);
+    const cached = await this.redis.getJson<any>(cacheKey);
+    if (cached) {
+      if (user?.role === 'staff') {
+        const ownedVenueIds = await this.fieldsRepository.findOwnedVenueIds(user.id);
+        if (!ownedVenueIds.includes(cached.venueId)) {
+          throw new ForbiddenException('Bạn chỉ được xem field thuộc sân của mình');
+        }
+      }
+      return cached;
+    }
+
     const field = await this.fieldsRepository.findById(id);
 
     if (!field) {
@@ -82,10 +127,12 @@ export class FieldsService {
       if (field.status !== 'active') {
         throw new NotFoundException('Field không tồn tại');
       }
+      await this.redis.setJson(cacheKey, field, CACHE_TTL.fieldDetail);
       return field;
     }
 
     if (user.role === 'admin') {
+      await this.redis.setJson(cacheKey, field, CACHE_TTL.fieldDetail);
       return field;
     }
 
@@ -97,6 +144,7 @@ export class FieldsService {
       throw new ForbiddenException('Bạn chỉ được thao tác trên sân của mình');
     }
 
+    await this.redis.setJson(cacheKey, field, CACHE_TTL.fieldDetail);
     return field;
   }
 
@@ -121,7 +169,7 @@ export class FieldsService {
       throw new NotFoundException('Venue không tồn tại');
     }
 
-    return this.fieldsRepository.create({
+    const field = await this.fieldsRepository.create({
       name: dto.name,
       price: dto.price,
       minDurationMinutes: dto.minDurationMinutes,
@@ -131,6 +179,10 @@ export class FieldsService {
       description: dto.description,
       status: dto.status,
     });
+
+    await this.invalidateFieldCache(undefined, dto.venueId);
+    await this.queueService.syncVenueToElastic(dto.venueId);
+    return field;
   }
 
   async update(id: string, user: JwtPayloadReturn, data: UpdateFieldDto) {
@@ -160,16 +212,22 @@ export class FieldsService {
       }
     }
 
-    return this.fieldsRepository.update(id, data);
+    const field = await this.fieldsRepository.update(id, data);
+    await this.invalidateFieldCache(id, field.venueId);
+    await this.queueService.syncVenueToElastic(field.venueId);
+    return field;
   }
 
   async remove(id: string, user: JwtPayloadReturn) {
-    await this.findOne(id, user);
+    const field = await this.findOne(id, user);
 
     const images = await this.fieldsRepository.findFieldImages(id);
     await Promise.all(images.map((image) => this.safeDeleteS3ByUrl(image.url)));
 
-    return this.fieldsRepository.delete(id);
+    const deleted = await this.fieldsRepository.delete(id);
+    await this.invalidateFieldCache(id, field.venueId);
+    await this.queueService.syncVenueToElastic(field.venueId);
+    return deleted;
   }
 
   async uploadImage(id: string, user: JwtPayloadReturn, file: Express.Multer.File | undefined) {
@@ -203,24 +261,96 @@ export class FieldsService {
   }
 
   async getAvailability(id: string, date: string, user?: JwtPayloadReturn) {
-    await this.findOne(id, user);
+    const field = await this.findOne(id, user);
+    const bookingDate = new Date(date);
+    if (Number.isNaN(bookingDate.getTime())) {
+      throw new BadRequestException('Ngày không hợp lệ');
+    }
 
-    const timeslots = await this.fieldsRepository.findTimeslots();
+    const open = this.parseTimeToMinutes(field.venue.openTime);
+    const close = this.parseTimeToMinutes(field.venue.closeTime);
+    const restStart = field.venue.restStartTime
+      ? this.parseTimeToMinutes(field.venue.restStartTime)
+      : null;
+    const restEnd = field.venue.restEndTime
+      ? this.parseTimeToMinutes(field.venue.restEndTime)
+      : null;
 
-    const bookedBookings = await this.fieldsRepository.findBookedTimeslots(id, new Date(date));
+    const generatedSlots: Array<{
+      startTime: string;
+      endTime: string;
+      durationMinutes: number;
+      subtotal: number;
+    }> = [];
 
-    const bookedTimeslotIds = new Set(bookedBookings.map((booking) => booking.timeslotId));
+    for (
+      let start = open;
+      start + field.minDurationMinutes <= close;
+      start += field.durationStepMinutes
+    ) {
+      const end = start + field.minDurationMinutes;
+      if (restStart !== null && restEnd !== null && start < restEnd && end > restStart) {
+        continue;
+      }
+
+      const startTime = this.minutesToTimeString(start);
+      const endTime = this.minutesToTimeString(end);
+      generatedSlots.push({
+        startTime,
+        endTime,
+        durationMinutes: field.minDurationMinutes,
+        subtotal: Math.round(field.price * (field.minDurationMinutes / 60)),
+      });
+    }
+
+    const bookedItems = await this.fieldsRepository.findBookedItems(id, bookingDate);
+
+    const slots = generatedSlots.map((slot) => {
+      const slotStart = this.timeStringToDate(slot.startTime);
+      const slotEnd = this.timeStringToDate(slot.endTime);
+
+      const isBooked = bookedItems.some(
+        (booked) =>
+          booked.startTime.getTime() < slotEnd.getTime() &&
+          booked.endTime.getTime() > slotStart.getTime(),
+      );
+
+      return {
+        startTime: `${slot.startTime}:00`,
+        endTime: `${slot.endTime}:00`,
+        durationMinutes: slot.durationMinutes,
+        subtotal: slot.subtotal,
+        status: isBooked ? 'booked' : 'available',
+      };
+    });
 
     return {
       fieldId: id,
       date,
-      timeslots: timeslots.map((timeslot) => ({
-        id: timeslot.id,
-        startTime: timeslot.startTime,
-        endTime: timeslot.endTime,
-        status: bookedTimeslotIds.has(timeslot.id) ? 'booked' : 'available',
-      })),
+      slots,
     };
+  }
+
+  private parseTimeToMinutes(time: string) {
+    const normalized = time.trim().slice(0, 5);
+    const [hours, minutes] = normalized.split(':').map(Number);
+    if (Number.isNaN(hours) || Number.isNaN(minutes)) {
+      throw new BadRequestException(`Thời gian không hợp lệ: ${time}`);
+    }
+    return hours * 60 + minutes;
+  }
+
+  private minutesToTimeString(minutes: number) {
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
+  }
+
+  private timeStringToDate(time: string) {
+    const minutes = this.parseTimeToMinutes(time);
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    return new Date(Date.UTC(1970, 0, 1, hours, mins, 0, 0));
   }
 
   private async safeDeleteS3ByUrl(url: string) {

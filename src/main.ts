@@ -1,15 +1,33 @@
-import { Logger, ValidationPipe } from '@nestjs/common';
+import { ConsoleLogger, Logger, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { HttpExceptionFilter } from '@/common/filters/http-exception.filter';
 import { GlobalResponseInterceptor } from '@/common/interceptors/globalResponse';
 
+const QUIET_STARTUP_CONTEXTS = new Set([
+  'NestFactory',
+  'InstanceLoader',
+  'RoutesResolver',
+  'RouterExplorer',
+  'WebSocketsController',
+  'NestApplication',
+]);
+
+class AppLogger extends ConsoleLogger {
+  log(message: unknown, context?: string) {
+    if (context && QUIET_STARTUP_CONTEXTS.has(context)) return;
+    super.log(message, context);
+  }
+}
+
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, {
+    logger: new AppLogger(),
+  });
 
   app.enableCors({
-    origin: ['http://localhost:3000', 'http://localhost:3002'],
+    origin: ['http://localhost:3000', 'http://localhost:3002/'],
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],

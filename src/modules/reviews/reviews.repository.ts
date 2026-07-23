@@ -13,7 +13,7 @@ export class ReviewsRepository {
       take,
       include: {
         user: { select: { id: true, name: true, email: true, phone: true } },
-        field: { include: { sport: true, venue: true } },
+        venue: true,
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -28,39 +28,42 @@ export class ReviewsRepository {
       where: { id },
       include: {
         user: { select: { id: true, name: true, email: true, phone: true } },
-        field: { include: { sport: true, venue: true } },
+        venue: true,
       },
     });
   }
 
-  findFieldById(id: string) {
-    return this.prisma.field.findUnique({ where: { id } });
+  findVenueById(id: string) {
+    return this.prisma.venue.findUnique({ where: { id } });
   }
 
-  hasConfirmedBooking(userId: string, fieldId: string) {
-    return this.prisma.booking.findFirst({
+  hasConfirmedBooking(userId: string, venueId: string) {
+    return this.prisma.bookingItem.findFirst({
       where: {
-        userId,
-        fieldId,
-        status: 'confirmed',
+        venueId,
+        status: 'active',
+        booking: {
+          userId,
+          status: 'confirmed',
+        },
       },
       select: { id: true },
     });
   }
 
-  findByUserAndField(userId: string, fieldId: string) {
+  findByUserAndVenue(userId: string, venueId: string) {
     return this.prisma.review.findFirst({
-      where: { userId, fieldId },
+      where: { userId, venueId },
       select: { id: true },
     });
   }
 
-  create(data: { userId: string; fieldId: string; rating: number; comment?: string }) {
+  create(data: { userId: string; venueId: string; rating: number; comment?: string }) {
     return this.prisma.review.create({
       data,
       include: {
         user: { select: { id: true, name: true, email: true, phone: true } },
-        field: { include: { sport: true, venue: true } },
+        venue: true,
       },
     });
   }
@@ -71,7 +74,7 @@ export class ReviewsRepository {
       data,
       include: {
         user: { select: { id: true, name: true, email: true, phone: true } },
-        field: { include: { sport: true, venue: true } },
+        venue: true,
       },
     });
   }

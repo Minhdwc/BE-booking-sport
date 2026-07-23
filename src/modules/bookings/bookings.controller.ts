@@ -26,6 +26,11 @@ export class BookingsController {
     return this.bookingsService.findAll(user, query);
   }
 
+  @Get(':id/timeline')
+  getTimeline(@Param('id') id: string, @CurrentUser() user: JwtPayloadReturn) {
+    return this.bookingsService.findTimeline(id, user);
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string, @CurrentUser() user: JwtPayloadReturn) {
     return this.bookingsService.findOne(id, user);
@@ -33,12 +38,7 @@ export class BookingsController {
 
   @Post()
   create(@CurrentUser() user: JwtPayloadReturn, @Body() createBookingDto: CreateBookingDto) {
-    return this.bookingsService.create(
-      user,
-      createBookingDto.fieldId,
-      createBookingDto.timeslotId,
-      createBookingDto.date,
-    );
+    return this.bookingsService.create(user, createBookingDto);
   }
 
   @Patch(':id')

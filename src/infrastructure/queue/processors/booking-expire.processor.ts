@@ -27,56 +27,86 @@ export class BookingExpireProcessor extends WorkerHost {
     const bookingId = job.data.bookingId;
     this.logger.log(`Processing booking expire job for ${bookingId}`);
 
-    const result = await this.prisma.booking.updateMany({
-      where: { id: bookingId, status: 'pending' },
-      data: { status: 'cancelled', slotLock: null },
+    const current = await this.prisma.booking.findUnique({
+      where: { id: bookingId },
+      select: { status: true },
     });
 
-    if (result.count === 0) {
-      this.logger.log(`Booking ${bookingId} already confirmed/cancelled — skip expire`);
+    if (!current || current.status !== 'waiting_payment') {
+      this.logger.log(`Booking ${bookingId} already confirmed/cancelled/expired — skip expire`);
       return;
     }
 
-    const updated = await this.prisma.booking.findUnique({
+    await this.prisma.bookingItem.updateMany({
+      where: { bookingId },
+      data: { status: 'cancelled' },
+    });
+
+    const updated = await this.prisma.booking.update({
       where: { id: bookingId },
+      data: { status: 'expired' },
       include: {
-        field: { include: { venue: true } },
+        user: { select: { id: true, name: true, email: true } },
+        items: {
+          include: {
+            field: { include: { venue: true } },
+          },
+        },
       },
     });
 
-    if (!updated) {
-      this.logger.warn(`Booking ${bookingId} not found after expire update`);
-      return;
-    }
-
-    const dateStr = updated.date.toISOString().split('T')[0];
+    const firstItem = updated.items[0];
+    const dateStr = firstItem?.date.toISOString().split('T')[0] ?? '';
     const title = 'Hết hạn giữ chỗ';
-    const message = `Hết hạn giữ chỗ, sân ${updated.field.name} tại ${updated.field.venue.name} ngày ${dateStr} đã được nhả`;
+    const message = `Hết hạn giữ chỗ, booking ${updated.bookingCode} (${firstItem?.field.name ?? 'Sân'} tại ${firstItem?.field.venue.name ?? 'cơ sở'} ngày ${dateStr}) đã được nhả`;
 
-    await this.queueService.createNotification(updated.userId, title, message);
+    await this.prisma.auditLog.create({
+      data: {
+        module: 'booking',
+        action: 'booking.expired',
+        entityType: 'booking',
+        entityId: bookingId,
+        fromValue: 'waiting_payment',
+        toValue: 'expired',
+        note: updated.bookingCode,
+      },
+    });
 
+    await this.queueService.createNotification(updated.userId, title, message, {
+      type: 'booking',
+      payload: { bookingId: updated.id, status: updated.status },
+    });
+
+    const venueIds = [...new Set(updated.items.map((item) => item.venueId))];
     const owners = await this.prisma.venueOwner.findMany({
-      where: { venueId: updated.field.venueId },
+      where: { venueId: { in: venueIds } },
       select: { userId: true },
     });
 
     await Promise.all(
-      owners.map((owner) => this.queueService.createNotification(owner.userId, title, message)),
+      owners.map((owner) =>
+        this.queueService.createNotification(owner.userId, title, message, {
+          type: 'booking',
+          payload: { bookingId: updated.id, status: updated.status },
+        }),
+      ),
     );
 
     this.socketGateway.sendBookingStatusUpdate(updated.userId, {
       bookingId: updated.id,
       status: updated.status,
-      fieldName: updated.field.name,
+      fieldName: firstItem?.field.name ?? 'Sân',
     });
 
-    this.socketGateway.broadcastToVenue(updated.field.venueId, 'booking:updated', {
-      bookingId: updated.id,
-      status: updated.status,
-      fieldId: updated.fieldId,
-      fieldName: updated.field.name,
-      date: dateStr,
-    });
+    for (const item of updated.items) {
+      this.socketGateway.broadcastToVenue(item.venueId, 'booking:updated', {
+        bookingId: updated.id,
+        status: updated.status,
+        fieldId: item.fieldId,
+        fieldName: item.field.name,
+        date: item.date.toISOString().split('T')[0],
+      });
+    }
 
     this.logger.log(`Booking ${bookingId} expired and slot released`);
   }

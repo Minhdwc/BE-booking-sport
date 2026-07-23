@@ -39,7 +39,7 @@ export class PaymentsService {
       if (ownedVenueIds.length === 0) {
         throw new ForbiddenException('Tài khoản chưa được gán sân');
       }
-      where = { booking: { field: { venueId: { in: ownedVenueIds } } } };
+      where = { booking: { items: { some: { venueId: { in: ownedVenueIds } } } } };
     } else {
       where = { booking: { userId: user.id } };
     }
@@ -65,7 +65,8 @@ export class PaymentsService {
 
     if (user.role === 'staff') {
       const ownedVenueIds = await this.paymentsRepository.findOwnedVenueIds(user.id);
-      if (!ownedVenueIds.includes(payment.booking.field.venueId)) {
+      const hasAccess = payment.booking.items.some((item) => ownedVenueIds.includes(item.venueId));
+      if (!hasAccess) {
         throw new ForbiddenException('Bạn chỉ được xem thanh toán thuộc sân của mình');
       }
       return payment;
@@ -99,7 +100,7 @@ export class PaymentsService {
       const account = await this.paymentsRepository.findVenuePaymentAccountById(
         dto.venuePaymentAccountId,
       );
-      if (!account || account.venueId !== booking.field.venueId) {
+      if (!account || !booking.items.some((item) => item.field.venueId === account.venueId)) {
         throw new BadRequestException('Tài khoản thanh toán không thuộc venue của booking');
       }
       if (!account.isActive) {
@@ -110,7 +111,7 @@ export class PaymentsService {
 
     return this.paymentsRepository.create({
       bookingId: dto.bookingId,
-      amount: booking.field.price,
+      amount: booking.finalAmount,
       method,
       status: user.role === 'user' ? 'pending' : (dto.status ?? 'pending'),
       venuePaymentAccountId: dto.venuePaymentAccountId,
@@ -132,8 +133,8 @@ export class PaymentsService {
       throw new ForbiddenException('Bạn chỉ được tạo thanh toán của mình');
     }
 
-    if (booking.status !== 'pending') {
-      throw new BadRequestException('Chỉ booking đang giữ chỗ (pending) mới được thanh toán');
+    if (booking.status !== 'waiting_payment') {
+      throw new BadRequestException('Chỉ booking đang giữ chỗ (waiting_payment) mới được thanh toán');
     }
 
     if (booking.expiresAt && booking.expiresAt.getTime() <= Date.now()) {
@@ -147,7 +148,7 @@ export class PaymentsService {
 
     return this.paymentsRepository.create({
       bookingId,
-      amount: booking.field.price,
+      amount: booking.finalAmount,
       method: 'vnpay',
       status: 'pending',
     });
@@ -167,7 +168,7 @@ export class PaymentsService {
       const account = await this.paymentsRepository.findVenuePaymentAccountById(
         data.venuePaymentAccountId,
       );
-      if (!account || account.venueId !== existing.booking.field.venueId) {
+      if (!account || account.venueId !== existing.booking.items[0]?.venueId) {
         throw new BadRequestException('Tài khoản thanh toán không thuộc venue của booking');
       }
       methodFromAccount = account.paymentMethod.code;
@@ -185,6 +186,7 @@ export class PaymentsService {
     if (data.status && data.status !== oldStatus) {
       await this.paymentsRepository.createAuditLog({
         actorId: user.id,
+        module: 'payment',
         action: `payment.${data.status}`,
         entityType: 'payment',
         entityId: payment.id,
@@ -217,7 +219,7 @@ export class PaymentsService {
       throw new BadRequestException('Thanh toán đã được hoàn tất');
     }
 
-    if (payment.booking.status !== 'pending') {
+    if (payment.booking.status !== 'waiting_payment') {
       throw new BadRequestException('Booking không còn ở trạng thái chờ thanh toán');
     }
 
@@ -226,6 +228,8 @@ export class PaymentsService {
     }
 
     await this.paymentsRepository.setMethod(paymentId, 'vnpay');
+
+    await this.paymentsRepository.incrementRetryCount(paymentId);
 
     const paymentUrl = this.paymentGateway.createPaymentUrl({
       amount: payment.amount,
@@ -252,7 +256,7 @@ export class PaymentsService {
       throw new BadRequestException('Thanh toán đã được hoàn tất');
     }
 
-    if (payment.booking.status !== 'pending') {
+    if (payment.booking.status !== 'waiting_payment') {
       throw new BadRequestException('Booking không còn ở trạng thái chờ thanh toán');
     }
 
@@ -293,7 +297,7 @@ export class PaymentsService {
     this.socketGateway.sendBookingStatusUpdate(user.id, {
       bookingId: updated.bookingId,
       status: 'confirmed',
-      fieldName: updated.booking.field.name ?? 'Sân',
+      fieldName: updated.booking.items[0]?.field.name ?? 'Sân',
     });
 
     return {
@@ -382,6 +386,7 @@ export class PaymentsService {
 
     await this.paymentsRepository.createAuditLog({
       actorId: null,
+      module: 'payment',
       action: 'payment.failed',
       entityType: 'payment',
       entityId: paymentId,
@@ -414,6 +419,7 @@ export class PaymentsService {
 
     await this.paymentsRepository.createAuditLog({
       actorId: null,
+      module: 'payment',
       action: 'payment.success',
       entityType: 'payment',
       entityId: payment.id,
@@ -421,6 +427,8 @@ export class PaymentsService {
       toValue: 'success',
       note: transactionCode,
     });
+
+    await this.queueService.recordPaymentStatistic(payment.id);
 
     return payment;
   }
@@ -431,7 +439,7 @@ export class PaymentsService {
     bookingId: string;
     booking: {
       user: { id: string; name: string; email: string };
-      field: { venueId: string; name?: string; venue?: { name?: string } };
+      items: Array<{ venueId: string; field: { name?: string; venue?: { name?: string } } }>;
     };
   }) {
     await this.queueService.sendPaymentConfirmationEmail(payment.booking.user.email, {
@@ -440,24 +448,30 @@ export class PaymentsService {
       bookingId: payment.bookingId,
     });
 
-    const venueId = payment.booking.field.venueId;
-    const ownerUserIds = await this.paymentsRepository.findVenueOwnerUserIds(venueId);
+    const venueIds = [...new Set(payment.booking.items.map((item) => item.venueId))];
 
     await Promise.all(
-      ownerUserIds.map((userId) =>
-        this.queueService.createNotification(
-          userId,
-          'Thanh toán thành công',
-          `Booking ${payment.bookingId.slice(0, 8)} đã thanh toán ${payment.amount.toLocaleString('vi-VN')} VNĐ`,
-        ),
-      ),
+      venueIds.map(async (venueId) => {
+        const ownerUserIds = await this.paymentsRepository.findVenueOwnerUserIds(venueId);
+        await Promise.all(
+          ownerUserIds.map((userId) =>
+            this.queueService.createNotification(
+              userId,
+              'Thanh toán thành công',
+              `Booking ${payment.bookingId.slice(0, 8)} đã thanh toán ${payment.amount.toLocaleString('vi-VN')} VNĐ`,
+            ),
+          ),
+        );
+      }),
     );
 
-    this.socketGateway.broadcastToVenue(venueId, 'booking:updated', {
-      bookingId: payment.bookingId,
-      status: 'confirmed',
-      paymentId: payment.id,
-      paymentStatus: 'success',
-    });
+    for (const venueId of venueIds) {
+      this.socketGateway.broadcastToVenue(venueId, 'booking:updated', {
+        bookingId: payment.bookingId,
+        status: 'confirmed',
+        paymentId: payment.id,
+        paymentStatus: 'success',
+      });
+    }
   }
 }

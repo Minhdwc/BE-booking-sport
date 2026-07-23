@@ -6,6 +6,9 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { S3Service } from '@/infrastructure/aws/s3.service';
+import { QueueService } from '@/infrastructure/queue/queue.service';
+import { RedisService } from '@/infrastructure/redis/redis.service';
+import { CACHE_KEYS, CACHE_TTL, hashQuery } from '@/common/cache/cache.constants';
 import { getPagination, PaginationQueryDto, toPaginatedResult } from '@/common/dto/pagination.dto';
 import { JwtPayloadReturn } from '@/utils/jwt.util';
 import { DTOCreateVenue, DTOUpdateVenue } from './venues.dto';
@@ -16,6 +19,8 @@ export class VenuesService {
   constructor(
     private readonly venuesRepository: VenuesRepository,
     private readonly s3Service: S3Service,
+    private readonly redis: RedisService,
+    private readonly queueService: QueueService,
   ) {}
 
   async findAll(user?: JwtPayloadReturn, query: PaginationQueryDto = {}) {
@@ -35,20 +40,57 @@ export class VenuesService {
       ];
     }
 
+    const cacheKey = CACHE_KEYS.venueList(
+      hashQuery({
+        page,
+        limit,
+        search: query.search ?? '',
+        role: user?.role ?? 'public',
+      }),
+    );
+    const cached = await this.redis.getJson<any>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
     const [data, total] = await Promise.all([
       this.venuesRepository.findAll(where, skip, limit),
       this.venuesRepository.count(where),
     ]);
 
-    return toPaginatedResult(data, total, page, limit);
+    const result = toPaginatedResult(data, total, page, limit);
+    await this.redis.setJson(cacheKey, result, CACHE_TTL.venueList);
+    return result;
   }
 
-  async findOne(id: string) {
+  async findOne(id: string, options?: { trackView?: boolean }) {
+    const cacheKey = CACHE_KEYS.venueDetail(id);
+    const cached = await this.redis.getJson<any>(cacheKey);
+    if (cached) {
+      if (options?.trackView) {
+        void this.queueService.recordVenueView(id);
+      }
+      return cached;
+    }
+
     const venue = await this.venuesRepository.findById(id);
     if (!venue) {
       throw new NotFoundException('Venue không tồn tại');
     }
+
+    await this.redis.setJson(cacheKey, venue, CACHE_TTL.venueDetail);
+    if (options?.trackView) {
+      void this.queueService.recordVenueView(id);
+    }
     return venue;
+  }
+
+  private async invalidateVenueCache(id?: string) {
+    await this.redis.invalidatePattern(CACHE_KEYS.venueListPattern);
+    if (id) {
+      await this.redis.del(CACHE_KEYS.venueDetail(id));
+      await this.redis.invalidatePattern('cache:search:venues:*');
+    }
   }
 
   async findByOwnerId(ownerId: string) {
@@ -63,7 +105,7 @@ export class VenuesService {
       }
     }
 
-    return this.venuesRepository.create({
+    const venue = await this.venuesRepository.create({
       name: payload.name,
       location: payload.location,
       longitude: payload.longitude,
@@ -75,6 +117,10 @@ export class VenuesService {
       description: payload.description,
       ownerId: payload.ownerId,
     });
+
+    await this.invalidateVenueCache();
+    await this.queueService.syncVenueToElastic(venue.id);
+    return venue;
   }
 
   async update(id: string, user: JwtPayloadReturn, data: DTOUpdateVenue) {
@@ -92,7 +138,10 @@ export class VenuesService {
       throw new NotFoundException('Venue không tồn tại');
     }
 
-    return this.venuesRepository.update(id, data);
+    const venue = await this.venuesRepository.update(id, data);
+    await this.invalidateVenueCache(id);
+    await this.queueService.syncVenueToElastic(id);
+    return venue;
   }
 
   async remove(id: string, user: JwtPayloadReturn) {
@@ -117,7 +166,10 @@ export class VenuesService {
       );
     }
 
-    return this.venuesRepository.delete(id);
+    const deleted = await this.venuesRepository.delete(id);
+    await this.invalidateVenueCache(id);
+    await this.queueService.deleteVenueFromElastic(id);
+    return deleted;
   }
 
   async uploadImage(id: string, user: JwtPayloadReturn, file: Express.Multer.File | undefined) {
@@ -139,12 +191,15 @@ export class VenuesService {
       const uploaded = await this.s3Service.upload(file, 'venues');
       const count = await this.venuesRepository.countVenueImages(id);
 
-      return this.venuesRepository.createVenueImage({
+      const image = await this.venuesRepository.createVenueImage({
         venueId: id,
         url: uploaded.url,
         position: count,
         isThumbnail: count === 0,
       });
+      await this.invalidateVenueCache(id);
+      await this.queueService.syncVenueToElastic(id);
+      return image;
     } catch (error) {
       const detail = error instanceof Error ? error.message : 'Upload thất bại';
       throw new BadRequestException(detail);
@@ -167,7 +222,10 @@ export class VenuesService {
     }
 
     await this.safeDeleteS3ByUrl(image.url);
-    return this.venuesRepository.deleteVenueImage(imageId);
+    const deleted = await this.venuesRepository.deleteVenueImage(imageId);
+    await this.invalidateVenueCache(venueId);
+    await this.queueService.syncVenueToElastic(venueId);
+    return deleted;
   }
 
   private async safeDeleteS3ByUrl(url: string) {

@@ -1,16 +1,41 @@
-import { IsDateString, IsIn, IsNotEmpty, IsString } from 'class-validator';
+import { Type } from 'class-transformer';
+import {
+  ArrayMinSize,
+  IsArray,
+  IsDateString,
+  IsIn,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  Matches,
+  ValidateNested,
+} from 'class-validator';
 
-export class CreateBookingDto {
+export class CreateBookingItemDto {
   @IsString()
   @IsNotEmpty()
   fieldId: string;
 
-  @IsString()
-  @IsNotEmpty()
-  timeslotId: string;
-
   @IsDateString()
   date: string;
+
+  @IsString()
+  startTime: string;
+
+  @IsString()
+  endTime: string;
+}
+
+export class CreateBookingDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ValidateNested({ each: true })
+  @Type(() => CreateBookingItemDto)
+  items: CreateBookingItemDto[];
+
+  @IsOptional()
+  @IsString()
+  note?: string;
 }
 
 export class UpdateBookingStatusDto {

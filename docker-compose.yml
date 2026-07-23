@@ -34,7 +34,27 @@ services:
       retries: 5
       start_period: 5s
 
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.15.3
+    container_name: fieldops-elasticsearch
+    restart: unless-stopped
+    ports:
+      - '${ELASTICSEARCH_PORT:-9200}:9200'
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: 'false'
+      ES_JAVA_OPTS: -Xms512m -Xmx512m
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -fs http://localhost:9200/_cluster/health || exit 1']
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 40s
+
   app:
+    profiles: [full]
     build:
       context: .
       dockerfile: Dockerfile
@@ -48,10 +68,14 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-Minhduc}:${POSTGRES_PASSWORD:-123456}@postgres:5432/${POSTGRES_DB:-booking-sports-fields}
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      ELASTICSEARCH_URL: http://elasticsearch:9200
+      ELASTICSEARCH_ENABLED: ${ELASTICSEARCH_ENABLED:-true}
     depends_on:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      elasticsearch:
         condition: service_healthy
     healthcheck:
       test:
@@ -67,3 +91,4 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  elasticsearch_data:

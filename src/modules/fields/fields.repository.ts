@@ -78,20 +78,20 @@ export class FieldsRepository {
     return this.prisma.field.delete({ where: { id } });
   }
 
-  findTimeslots() {
-    return this.prisma.timeslot.findMany({
-      orderBy: { startTime: 'asc' },
-    });
-  }
-
-  findBookedTimeslots(fieldId: string, date: Date) {
-    return this.prisma.booking.findMany({
+  findBookedItems(fieldId: string, date: Date) {
+    return this.prisma.bookingItem.findMany({
       where: {
         fieldId,
         date,
-        status: { notIn: ['cancelled'] },
+        status: 'active',
+        booking: {
+          status: { in: ['waiting_payment', 'confirmed', 'completed'] },
+        },
       },
-      select: { timeslotId: true },
+      select: {
+        startTime: true,
+        endTime: true,
+      },
     });
   }
 
