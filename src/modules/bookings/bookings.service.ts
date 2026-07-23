@@ -193,7 +193,7 @@ export class BookingsService {
     const finalAmount = totalAmount - discountAmount;
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
 
-    let booking;
+    let booking: Awaited<ReturnType<BookingsRepository['create']>>;
     try {
       booking = await this.bookingsRepository.create({
         userId: user.id,

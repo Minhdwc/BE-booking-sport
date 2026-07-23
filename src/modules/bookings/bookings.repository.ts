@@ -114,9 +114,7 @@ export class BookingsRepository {
     return this.prisma.$transaction(async (tx) => {
       const lockKeys = [
         ...new Set(
-          data.items.map(
-            (item) => `${item.fieldId}:${item.date.toISOString().slice(0, 10)}`,
-          ),
+          data.items.map((item) => `${item.fieldId}:${item.date.toISOString().slice(0, 10)}`),
         ),
       ].sort();
 
@@ -129,13 +127,15 @@ export class BookingsRepository {
       }
 
       for (const [index, item] of data.items.entries()) {
-        const overlapsAnotherRequestedItem = data.items.slice(0, index).some(
-          (other) =>
-            other.fieldId === item.fieldId &&
-            other.date.getTime() === item.date.getTime() &&
-            other.startTime.getTime() < item.endTime.getTime() &&
-            other.endTime.getTime() > item.startTime.getTime(),
-        );
+        const overlapsAnotherRequestedItem = data.items
+          .slice(0, index)
+          .some(
+            (other) =>
+              other.fieldId === item.fieldId &&
+              other.date.getTime() === item.date.getTime() &&
+              other.startTime.getTime() < item.endTime.getTime() &&
+              other.endTime.getTime() > item.startTime.getTime(),
+          );
 
         const existingConflict = await tx.bookingItem.findFirst({
           where: {

@@ -140,7 +140,9 @@ export class PaymentsService {
     }
 
     if (booking.status !== 'waiting_payment') {
-      throw new BadRequestException('Chỉ booking đang giữ chỗ (waiting_payment) mới được thanh toán');
+      throw new BadRequestException(
+        'Chỉ booking đang giữ chỗ (waiting_payment) mới được thanh toán',
+      );
     }
 
     if (booking.expiresAt && booking.expiresAt.getTime() <= Date.now()) {
