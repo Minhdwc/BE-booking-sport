@@ -7,6 +7,7 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
+  ValidateIf,
   ValidateNested,
 } from 'class-validator';
 
@@ -50,4 +51,9 @@ export class CreateWalkInDto extends CreateBookingDto {
 export class UpdateBookingStatusDto {
   @IsIn(['confirmed', 'completed', 'cancelled'])
   status: 'confirmed' | 'completed' | 'cancelled';
+
+  @ValidateIf((dto: UpdateBookingStatusDto) => dto.status === 'confirmed')
+  @IsString()
+  @IsNotEmpty({ message: 'Cần ghi lý do khi xác nhận thủ công' })
+  reason?: string;
 }

@@ -421,6 +421,17 @@ export class PaymentsService {
 
     await this.paymentsRepository.createAuditLog({
       actorId: null,
+      module: 'booking',
+      action: 'booking.confirmed',
+      entityType: 'booking',
+      entityId: payment.bookingId,
+      fromValue: 'waiting_payment',
+      toValue: 'confirmed',
+      note: transactionCode,
+    });
+
+    await this.paymentsRepository.createAuditLog({
+      actorId: null,
       module: 'payment',
       action: 'payment.success',
       entityType: 'payment',

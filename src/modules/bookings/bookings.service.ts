@@ -11,8 +11,10 @@ import { QueueService } from '@/infrastructure/queue/queue.service';
 import { SocketGateway } from '@/infrastructure/socket/socket.gateway';
 import { getPagination, PaginationQueryDto, toPaginatedResult } from '@/common/dto/pagination.dto';
 import { JwtPayloadReturn } from '@/utils/jwt.util';
-import { CreateBookingDto, CreateBookingItemDto, CreateWalkInDto } from './bookings.dto';
+import { CreateBookingDto, CreateBookingItemDto, CreateWalkInDto, UpdateBookingStatusDto } from './bookings.dto';
 import { BookingsRepository } from './bookings.repository';
+
+const BOOKING_CANCEL_HOURS_BEFORE = 8;
 
 @Injectable()
 export class BookingsService {
@@ -350,8 +352,9 @@ export class BookingsService {
   async updateStatus(
     id: string,
     user: JwtPayloadReturn,
-    status: 'confirmed' | 'completed' | 'cancelled',
+    dto: UpdateBookingStatusDto,
   ) {
+    const { status } = dto;
     const currentBooking = await this.findOne(id, user);
     const oldStatus = currentBooking.status;
 
@@ -375,20 +378,33 @@ export class BookingsService {
       throw new BadRequestException('Chỉ booking waiting_payment mới được confirm');
     }
 
+    if (
+      status === 'confirmed' &&
+      (user.role === 'owner' || user.role === 'admin') &&
+      !dto.reason?.trim()
+    ) {
+      throw new BadRequestException('Cần ghi lý do khi xác nhận thủ công');
+    }
+
     if (status === 'completed' && oldStatus !== 'confirmed') {
       throw new BadRequestException('Chỉ booking confirmed mới được complete');
     }
 
     const booking = await this.bookingsRepository.updateStatus(id, status);
+    const confirmAction =
+      status === 'confirmed' && (user.role === 'owner' || user.role === 'admin')
+        ? 'booking.confirmed_manually'
+        : `booking.${status}`;
 
     await this.bookingsRepository.createAuditLog({
       actorId: user.id,
       module: 'booking',
-      action: `booking.${status}`,
+      action: confirmAction,
       entityType: 'booking',
       entityId: booking.id,
       fromValue: oldStatus,
       toValue: status,
+      note: dto.reason?.trim() || undefined,
     });
 
     await this.queueService.createNotification(
@@ -448,16 +464,13 @@ export class BookingsService {
     }
 
     if (user.role === 'user') {
-      const cancelHours = Number(process.env.BOOKING_CANCEL_HOURS_BEFORE || 8);
       const firstItem = currentBooking.items[0];
       if (firstItem) {
-        const playAt = new Date(firstItem.date);
-        const [h, m] = [firstItem.startTime.getUTCHours(), firstItem.startTime.getUTCMinutes()];
-        playAt.setHours(h, m, 0, 0);
+        const playAt = this.combineBookingDateAndTime(firstItem.date, firstItem.startTime);
         const hoursUntil = (playAt.getTime() - Date.now()) / (1000 * 60 * 60);
-        if (hoursUntil < cancelHours) {
+        if (hoursUntil < BOOKING_CANCEL_HOURS_BEFORE) {
           throw new BadRequestException(
-            `Chỉ được hủy miễn phí trước ít nhất ${cancelHours} giờ so với giờ chơi`,
+            `Chỉ được hủy miễn phí trước ít nhất ${BOOKING_CANCEL_HOURS_BEFORE} giờ so với giờ chơi`,
           );
         }
       }
@@ -526,6 +539,13 @@ export class BookingsService {
 
     await this.findOne(id, user);
     return this.bookingsRepository.delete(id);
+  }
+
+  private combineBookingDateAndTime(date: Date, startTime: Date): Date {
+    const datePart = date.toISOString().slice(0, 10);
+    const hours = startTime.getUTCHours().toString().padStart(2, '0');
+    const minutes = startTime.getUTCMinutes().toString().padStart(2, '0');
+    return new Date(`${datePart}T${hours}:${minutes}:00`);
   }
 
   private parseTimeToMinutes(time: string) {

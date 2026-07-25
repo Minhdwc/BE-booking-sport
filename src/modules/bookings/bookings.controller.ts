@@ -56,7 +56,7 @@ export class BookingsController {
     @CurrentUser() user: JwtPayloadReturn,
     @Body() updateBookingStatusDto: UpdateBookingStatusDto,
   ) {
-    return this.bookingsService.updateStatus(id, user, updateBookingStatusDto.status);
+    return this.bookingsService.updateStatus(id, user, updateBookingStatusDto);
   }
 
   @Delete(':id')
