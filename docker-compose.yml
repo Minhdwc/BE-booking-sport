@@ -35,6 +35,7 @@ services:
       start_period: 5s
 
   elasticsearch:
+    profiles: [search]
     image: docker.elastic.co/elasticsearch/elasticsearch:8.15.3
     container_name: fieldops-elasticsearch
     restart: unless-stopped
@@ -69,13 +70,11 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       ELASTICSEARCH_URL: http://elasticsearch:9200
-      ELASTICSEARCH_ENABLED: ${ELASTICSEARCH_ENABLED:-true}
+      ELASTICSEARCH_ENABLED: ${ELASTICSEARCH_ENABLED:-false}
     depends_on:
       postgres:
         condition: service_healthy
       redis:
-        condition: service_healthy
-      elasticsearch:
         condition: service_healthy
     healthcheck:
       test:

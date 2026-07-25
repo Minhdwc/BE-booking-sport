@@ -11,7 +11,12 @@ import { QueueService } from '@/infrastructure/queue/queue.service';
 import { SocketGateway } from '@/infrastructure/socket/socket.gateway';
 import { getPagination, PaginationQueryDto, toPaginatedResult } from '@/common/dto/pagination.dto';
 import { JwtPayloadReturn } from '@/utils/jwt.util';
-import { CreateBookingDto, CreateBookingItemDto, CreateWalkInDto, UpdateBookingStatusDto } from './bookings.dto';
+import {
+  CreateBookingDto,
+  CreateBookingItemDto,
+  CreateWalkInDto,
+  UpdateBookingStatusDto,
+} from './bookings.dto';
 import { BookingsRepository } from './bookings.repository';
 
 const BOOKING_CANCEL_HOURS_BEFORE = 8;
@@ -349,11 +354,7 @@ export class BookingsService {
     return preparedItems;
   }
 
-  async updateStatus(
-    id: string,
-    user: JwtPayloadReturn,
-    dto: UpdateBookingStatusDto,
-  ) {
+  async updateStatus(id: string, user: JwtPayloadReturn, dto: UpdateBookingStatusDto) {
     const { status } = dto;
     const currentBooking = await this.findOne(id, user);
     const oldStatus = currentBooking.status;
@@ -542,10 +543,9 @@ export class BookingsService {
   }
 
   private combineBookingDateAndTime(date: Date, startTime: Date): Date {
-    const datePart = date.toISOString().slice(0, 10);
-    const hours = startTime.getUTCHours().toString().padStart(2, '0');
-    const minutes = startTime.getUTCMinutes().toString().padStart(2, '0');
-    return new Date(`${datePart}T${hours}:${minutes}:00`);
+    const playAt = new Date(date);
+    playAt.setUTCHours(startTime.getUTCHours(), startTime.getUTCMinutes(), 0, 0);
+    return playAt;
   }
 
   private parseTimeToMinutes(time: string) {
