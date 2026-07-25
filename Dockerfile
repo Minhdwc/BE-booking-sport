@@ -39,11 +39,10 @@ COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 RUN npx prisma generate
 
 COPY --from=builder /app/dist ./dist
-COPY docker-entrypoint.sh ./docker-entrypoint.sh
-RUN chmod +x docker-entrypoint.sh && chown -R nestjs:nodejs /app
+RUN chown -R nestjs:nodejs /app
 
 USER nestjs
 
 EXPOSE 3001
 
-ENTRYPOINT ["./docker-entrypoint.sh"]
+CMD ["node", "dist/main.js"]
