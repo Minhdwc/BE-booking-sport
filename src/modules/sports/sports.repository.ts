@@ -24,7 +24,14 @@ export class SportsRepository {
   }
 
   create(name: string) {
-    return this.prisma.sport.create({ data: { name } });
+    const slug = name
+      .trim()
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+    return this.prisma.sport.create({ data: { name, slug: slug || `sport-${Date.now()}` } });
   }
 
   update(id: string, name?: string) {

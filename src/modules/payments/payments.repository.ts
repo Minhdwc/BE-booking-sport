@@ -17,7 +17,7 @@ export class PaymentsRepository {
             user: { select: { id: true, name: true, email: true, phone: true } },
             items: {
               include: {
-                field: { include: { venue: true } },
+                court: { include: { venue: true } },
                 venue: true,
               },
             },
@@ -41,7 +41,7 @@ export class PaymentsRepository {
             user: { select: { id: true, name: true, email: true, phone: true } },
             items: {
               include: {
-                field: { include: { venue: true } },
+                court: { include: { venue: true } },
                 venue: true,
               },
             },
@@ -52,11 +52,11 @@ export class PaymentsRepository {
   }
 
   async findOwnedVenueIds(userId: string) {
-    const ownerships = await this.prisma.venueOwner.findMany({
+    const venues = await this.prisma.venue.findMany({
       where: { userId },
-      select: { venueId: true },
+      select: { id: true },
     });
-    return ownerships.map((ownership) => ownership.venueId);
+    return venues.map((venue) => venue.id);
   }
 
   findBookingById(id: string) {
@@ -68,7 +68,7 @@ export class PaymentsRepository {
         status: true,
         finalAmount: true,
         expiresAt: true,
-        items: { include: { field: { select: { venueId: true } } } },
+        items: { include: { court: { select: { venueId: true } } } },
       },
     });
   }
@@ -83,7 +83,7 @@ export class PaymentsRepository {
             user: { select: { id: true, name: true, email: true, phone: true } },
             items: {
               include: {
-                field: { include: { venue: true } },
+                court: { include: { venue: true } },
                 venue: true,
               },
             },
@@ -109,7 +109,7 @@ export class PaymentsRepository {
             user: { select: { id: true, name: true, email: true, phone: true } },
             items: {
               include: {
-                field: { include: { venue: true } },
+                court: { include: { venue: true } },
                 venue: true,
               },
             },
@@ -129,7 +129,7 @@ export class PaymentsRepository {
             user: { select: { id: true, name: true, email: true, phone: true } },
             items: {
               include: {
-                field: { include: { venue: true } },
+                court: { include: { venue: true } },
                 venue: true,
               },
             },
@@ -186,7 +186,7 @@ export class PaymentsRepository {
             user: { select: { id: true, name: true, email: true, phone: true } },
             items: {
               include: {
-                field: { include: { venue: true } },
+                court: { include: { venue: true } },
                 venue: true,
               },
             },
@@ -209,10 +209,11 @@ export class PaymentsRepository {
   }
 
   async findVenueOwnerUserIds(venueId: string) {
-    const owners = await this.prisma.venueOwner.findMany({
-      where: { venueId },
+    const venue = await this.prisma.venue.findUnique({
+      where: { id: venueId },
       select: { userId: true },
     });
-    return owners.map((owner) => owner.userId);
+    if (!venue) return [];
+    return [venue.userId];
   }
 }

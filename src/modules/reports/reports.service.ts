@@ -24,7 +24,7 @@ export class ReportsService {
       return venue;
     }
 
-    if (user.role === 'staff') {
+    if (user.role === 'owner') {
       const ownership = await this.reportsRepository.findVenueOwnership(user.id, venueId);
       if (!ownership) {
         throw new ForbiddenException('Bạn không có quyền truy cập sân vận động này');

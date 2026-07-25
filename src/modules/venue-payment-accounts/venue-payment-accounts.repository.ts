@@ -12,7 +12,7 @@ export class VenuePaymentAccountsRepository {
       skip,
       take,
       include: {
-        venue: { select: { id: true, name: true, location: true } },
+        venue: { select: { id: true, name: true, address: true } },
         paymentMethod: true,
       },
       orderBy: { createdAt: 'desc' },
@@ -27,7 +27,7 @@ export class VenuePaymentAccountsRepository {
     return this.prisma.venuePaymentAccount.findUnique({
       where: { id },
       include: {
-        venue: { select: { id: true, name: true, location: true } },
+        venue: { select: { id: true, name: true, address: true } },
         paymentMethod: true,
       },
     });
@@ -48,18 +48,18 @@ export class VenuePaymentAccountsRepository {
   }
 
   async findOwnedVenueIds(userId: string) {
-    const ownerships = await this.prisma.venueOwner.findMany({
+    const venues = await this.prisma.venue.findMany({
       where: { userId },
-      select: { venueId: true },
+      select: { id: true },
     });
-    return ownerships.map((o) => o.venueId);
+    return venues.map((venue) => venue.id);
   }
 
   create(data: Prisma.VenuePaymentAccountUncheckedCreateInput) {
     return this.prisma.venuePaymentAccount.create({
       data,
       include: {
-        venue: { select: { id: true, name: true, location: true } },
+        venue: { select: { id: true, name: true, address: true } },
         paymentMethod: true,
       },
     });
@@ -70,7 +70,7 @@ export class VenuePaymentAccountsRepository {
       where: { id },
       data,
       include: {
-        venue: { select: { id: true, name: true, location: true } },
+        venue: { select: { id: true, name: true, address: true } },
         paymentMethod: true,
       },
     });

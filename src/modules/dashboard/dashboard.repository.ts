@@ -17,11 +17,11 @@ export class DashboardRepository {
       _sum: { amount: true },
       _count: { _all: true },
     });
-    const topFields = this.prisma.bookingItem.groupBy({
-      by: ['fieldId'],
+    const topCourts = this.prisma.bookingItem.groupBy({
+      by: ['courtId'],
       where: { booking: bookingWhere, status: 'active' },
       _count: { _all: true },
-      orderBy: { _count: { fieldId: 'desc' } },
+      orderBy: { _count: { courtId: 'desc' } },
       take: 5,
     });
     const topVenues = this.prisma.bookingItem.groupBy({
@@ -32,7 +32,7 @@ export class DashboardRepository {
       take: 5,
     });
 
-    return Promise.all([bookingsByStatus, revenueAgg, topFields, topVenues]);
+    return Promise.all([bookingsByStatus, revenueAgg, topCourts, topVenues]);
   }
 
   findSuccessfulPayments(paymentWhere: Prisma.PaymentWhereInput) {
@@ -48,7 +48,7 @@ export class DashboardRepository {
             user: { select: { id: true, name: true, email: true } },
             items: {
               select: {
-                field: {
+                court: {
                   select: {
                     sportId: true,
                     sport: { select: { id: true, name: true } },
@@ -62,8 +62,8 @@ export class DashboardRepository {
     });
   }
 
-  findFieldsByIds(ids: string[]) {
-    return this.prisma.field.findMany({
+  findCourtsByIds(ids: string[]) {
+    return this.prisma.court.findMany({
       where: { id: { in: ids } },
       select: { id: true, name: true, venueId: true, venue: { select: { name: true } } },
     });
@@ -72,14 +72,15 @@ export class DashboardRepository {
   findVenuesByIds(ids: string[]) {
     return this.prisma.venue.findMany({
       where: { id: { in: ids } },
-      select: { id: true, name: true, location: true },
+      select: { id: true, name: true, address: true },
     });
   }
 
-  findOwnedVenueIds(userId: string) {
-    return this.prisma.venueOwner.findMany({
+  async findOwnedVenueIds(userId: string) {
+    const venues = await this.prisma.venue.findMany({
       where: { userId },
-      select: { venueId: true },
+      select: { id: true },
     });
+    return venues.map((venue) => venue.id);
   }
 }

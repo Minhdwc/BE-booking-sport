@@ -18,50 +18,50 @@ import { Public } from '@/common/decorators/public.decorator';
 import { Roles } from '@/common/decorators/roles.decorator';
 import { RolesGuard } from '@/common/guards';
 import { JwtPayloadReturn } from '@/utils/jwt.util';
-import { FieldsService } from './fields.service';
+import { CourtsService } from './courts.service';
 import {
-  CreateFieldDto,
-  FieldAvailabilityQueryDto,
-  FindAllFieldsQueryDto,
-  UpdateFieldDto,
-} from './fields.dto';
+  CourtAvailabilityQueryDto,
+  CreateCourtDto,
+  FindAllCourtsQueryDto,
+  UpdateCourtDto,
+} from './courts.dto';
 
-@Controller('fields')
-export class FieldsController {
-  constructor(private readonly fieldsService: FieldsService) {}
+@Controller('courts')
+export class CourtsController {
+  constructor(private readonly courtsService: CourtsService) {}
 
   @Public()
   @Get()
-  findAll(@Query() query: FindAllFieldsQueryDto, @CurrentUser() user?: JwtPayloadReturn) {
-    return this.fieldsService.findAll(user, query);
+  findAll(@Query() query: FindAllCourtsQueryDto, @CurrentUser() user?: JwtPayloadReturn) {
+    return this.courtsService.findAll(user, query);
   }
 
   @Public()
   @Get(':id/availability')
   getAvailability(
     @Param('id') id: string,
-    @Query() query: FieldAvailabilityQueryDto,
+    @Query() query: CourtAvailabilityQueryDto,
     @CurrentUser() user?: JwtPayloadReturn,
   ) {
-    return this.fieldsService.getAvailability(id, query.date, user);
+    return this.courtsService.getAvailability(id, query.date, user);
   }
 
   @Public()
   @Get(':id')
   findOne(@Param('id') id: string, @CurrentUser() user?: JwtPayloadReturn) {
-    return this.fieldsService.findOne(id, user);
+    return this.courtsService.findOne(id, user);
   }
 
   @Post()
   @UseGuards(RolesGuard)
-  @Roles('admin', 'staff')
-  create(@Body() createFieldDto: CreateFieldDto, @CurrentUser() user: JwtPayloadReturn) {
-    return this.fieldsService.create(user, createFieldDto);
+  @Roles('admin', 'owner')
+  create(@Body() createCourtDto: CreateCourtDto, @CurrentUser() user: JwtPayloadReturn) {
+    return this.courtsService.create(user, createCourtDto);
   }
 
   @Post(':id/images')
   @UseGuards(RolesGuard)
-  @Roles('admin', 'staff')
+  @Roles('admin', 'owner')
   @UseInterceptors(
     FileInterceptor('file', {
       storage: memoryStorage(),
@@ -73,35 +73,35 @@ export class FieldsController {
     @UploadedFile() file: Express.Multer.File,
     @CurrentUser() user: JwtPayloadReturn,
   ) {
-    return this.fieldsService.uploadImage(id, user, file);
+    return this.courtsService.uploadImage(id, user, file);
   }
 
   @Patch(':id')
   @UseGuards(RolesGuard)
-  @Roles('admin', 'staff')
+  @Roles('admin', 'owner')
   update(
     @Param('id') id: string,
-    @Body() updateFieldDto: UpdateFieldDto,
+    @Body() updateCourtDto: UpdateCourtDto,
     @CurrentUser() user: JwtPayloadReturn,
   ) {
-    return this.fieldsService.update(id, user, updateFieldDto);
+    return this.courtsService.update(id, user, updateCourtDto);
   }
 
   @Delete(':id/images/:imageId')
   @UseGuards(RolesGuard)
-  @Roles('admin', 'staff')
+  @Roles('admin', 'owner')
   removeImage(
     @Param('id') id: string,
     @Param('imageId') imageId: string,
     @CurrentUser() user: JwtPayloadReturn,
   ) {
-    return this.fieldsService.removeImage(id, imageId, user);
+    return this.courtsService.removeImage(id, imageId, user);
   }
 
   @Delete(':id')
   @UseGuards(RolesGuard)
-  @Roles('admin', 'staff')
+  @Roles('admin', 'owner')
   remove(@Param('id') id: string, @CurrentUser() user: JwtPayloadReturn) {
-    return this.fieldsService.remove(id, user);
+    return this.courtsService.remove(id, user);
   }
 }

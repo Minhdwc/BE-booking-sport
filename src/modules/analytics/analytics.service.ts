@@ -114,9 +114,8 @@ export class AnalyticsService {
       return null;
     }
 
-    if (user.role === 'staff') {
-      const ownerships = await this.repository.findOwnedVenueIds(user.id);
-      const ownedVenueIds = ownerships.map((ownership) => ownership.venueId);
+    if (user.role === 'owner') {
+      const ownedVenueIds = await this.repository.findOwnedVenueIds(user.id);
       if (ownedVenueIds.length === 0) {
         throw new ForbiddenException('Tài khoản chưa được gán sân');
       }

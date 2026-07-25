@@ -4,13 +4,14 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  UnprocessableEntityException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { QueueService } from '@/infrastructure/queue/queue.service';
 import { SocketGateway } from '@/infrastructure/socket/socket.gateway';
 import { getPagination, PaginationQueryDto, toPaginatedResult } from '@/common/dto/pagination.dto';
 import { JwtPayloadReturn } from '@/utils/jwt.util';
-import { CreateBookingDto } from './bookings.dto';
+import { CreateBookingDto, CreateBookingItemDto, CreateWalkInDto } from './bookings.dto';
 import { BookingsRepository } from './bookings.repository';
 
 @Injectable()
@@ -27,7 +28,7 @@ export class BookingsService {
 
     if (user.role === 'admin') {
       where = undefined;
-    } else if (user.role === 'staff') {
+    } else if (user.role === 'owner') {
       const ownedVenueIds = await this.bookingsRepository.findOwnedVenueIds(user.id);
       if (ownedVenueIds.length === 0) {
         return toPaginatedResult([], 0, page, limit);
@@ -43,9 +44,11 @@ export class BookingsService {
         ...where,
         OR: [
           { bookingCode: { contains: search, mode: 'insensitive' } },
+          { customerName: { contains: search, mode: 'insensitive' } },
+          { customerPhone: { contains: search, mode: 'insensitive' } },
           { user: { name: { contains: search, mode: 'insensitive' } } },
           { user: { email: { contains: search, mode: 'insensitive' } } },
-          { items: { some: { field: { name: { contains: search, mode: 'insensitive' } } } } },
+          { items: { some: { court: { name: { contains: search, mode: 'insensitive' } } } } },
         ],
       };
     }
@@ -69,7 +72,7 @@ export class BookingsService {
       return booking;
     }
 
-    if (user.role === 'staff') {
+    if (user.role === 'owner') {
       const ownedVenueIds = await this.bookingsRepository.findOwnedVenueIds(user.id);
       const hasAccess = booking.items.some((item) => ownedVenueIds.includes(item.venueId));
       if (!hasAccess) {
@@ -91,107 +94,18 @@ export class BookingsService {
   }
 
   async create(user: JwtPayloadReturn, dto: CreateBookingDto) {
-    const preparedItems: Array<{
-      fieldId: string;
-      venueId: string;
-      date: Date;
-      startTime: Date;
-      endTime: Date;
-      durationMinutes: number;
-      pricePerHour: number;
-      subtotal: number;
-      fieldName: string;
-      venueName: string;
-      venueIdForNotify: string;
-    }> = [];
-
-    for (const item of dto.items) {
-      const bookingDate = new Date(item.date);
-      if (Number.isNaN(bookingDate.getTime())) {
-        throw new BadRequestException('Ngày đặt sân không hợp lệ');
-      }
-
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const bookingDay = new Date(bookingDate);
-      bookingDay.setHours(0, 0, 0, 0);
-      if (bookingDay < today) {
-        throw new BadRequestException('Ngày đặt sân phải lớn hơn hiện tại');
-      }
-
-      const field = await this.bookingsRepository.findFieldById(item.fieldId);
-      if (!field) {
-        throw new NotFoundException('Sân không tồn tại');
-      }
-      if (field.status !== 'active') {
-        throw new BadRequestException(`Sân ${field.name} hiện không nhận đặt lịch`);
-      }
-
-      const startMinutes = this.parseTimeToMinutes(item.startTime);
-      const endMinutes = this.parseTimeToMinutes(item.endTime);
-      if (endMinutes <= startMinutes) {
-        throw new BadRequestException('Giờ kết thúc phải sau giờ bắt đầu');
-      }
-
-      const durationMinutes = endMinutes - startMinutes;
-      if (durationMinutes < field.minDurationMinutes) {
-        throw new BadRequestException(`Thời lượng tối thiểu là ${field.minDurationMinutes} phút`);
-      }
-      if ((durationMinutes - field.minDurationMinutes) % field.durationStepMinutes !== 0) {
-        throw new BadRequestException(
-          `Thời lượng phải theo bước nhảy ${field.durationStepMinutes} phút`,
-        );
-      }
-
-      const openMinutes = this.parseTimeToMinutes(field.venue.openTime);
-      const closeMinutes = this.parseTimeToMinutes(field.venue.closeTime);
-      if (startMinutes < openMinutes || endMinutes > closeMinutes) {
-        throw new BadRequestException('Khung giờ nằm ngoài giờ hoạt động của cơ sở');
-      }
-
-      if (field.venue.restStartTime && field.venue.restEndTime) {
-        const restStart = this.parseTimeToMinutes(field.venue.restStartTime);
-        const restEnd = this.parseTimeToMinutes(field.venue.restEndTime);
-        if (startMinutes < restEnd && endMinutes > restStart) {
-          throw new BadRequestException('Khung giờ trùng giờ nghỉ của cơ sở');
-        }
-      }
-
-      const startTime = this.timeStringToDate(item.startTime);
-      const endTime = this.timeStringToDate(item.endTime);
-      const existingItems = await this.bookingsRepository.findActiveItemsForFieldDate(
-        item.fieldId,
-        bookingDate,
-      );
-
-      const conflict = existingItems.some(
-        (existing) =>
-          existing.startTime.getTime() < endTime.getTime() &&
-          existing.endTime.getTime() > startTime.getTime(),
-      );
-      if (conflict) {
-        throw new ConflictException(`Khung giờ ${item.startTime}–${item.endTime} đã được đặt`);
-      }
-
-      preparedItems.push({
-        fieldId: field.id,
-        venueId: field.venueId,
-        date: bookingDate,
-        startTime,
-        endTime,
-        durationMinutes,
-        pricePerHour: field.price,
-        subtotal: Math.round(field.price * (durationMinutes / 60)),
-        fieldName: field.name,
-        venueName: field.venue.name,
-        venueIdForNotify: field.venueId,
-      });
+    const dbUser = await this.bookingsRepository.findUserById(user.id);
+    if (!dbUser?.emailVerified) {
+      throw new BadRequestException('Vui lòng xác minh email trước khi đặt sân');
     }
+
+    const preparedItems = await this.prepareBookingItems(dto.items);
 
     const totalAmount = preparedItems.reduce((sum, item) => sum + item.subtotal, 0);
     const discountAmount = 0;
     const finalAmount = totalAmount - discountAmount;
-    const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+    const holdSeconds = 600;
+    const expiresAt = new Date(Date.now() + holdSeconds * 1000);
 
     const booking = await this.bookingsRepository.create({
       userId: user.id,
@@ -202,10 +116,10 @@ export class BookingsService {
       finalAmount,
       note: dto.note,
       expiresAt,
-      items: preparedItems.map(({ fieldName, venueName, venueIdForNotify, ...item }) => item),
+      items: preparedItems.map(({ courtName, venueName, venueIdForNotify, ...item }) => item),
     });
 
-    await this.queueService.scheduleBookingExpiry(booking.id);
+    await this.queueService.scheduleBookingExpiry(booking.id, holdSeconds * 1000);
 
     await this.bookingsRepository.createAuditLog({
       actorId: user.id,
@@ -218,11 +132,10 @@ export class BookingsService {
     });
 
     const firstItem = booking.items[0];
-    const dateStr = firstItem?.date.toISOString().split('T')[0] ?? '';
     const itemSummary = booking.items
       .map(
         (item) =>
-          `${item.field.name} (${item.startTime.toISOString().slice(11, 16)}–${item.endTime.toISOString().slice(11, 16)})`,
+          `${item.court.name} (${item.startTime.toISOString().slice(11, 16)}–${item.endTime.toISOString().slice(11, 16)})`,
       )
       .join(', ');
 
@@ -240,21 +153,198 @@ export class BookingsService {
     this.socketGateway.sendBookingStatusUpdate(booking.userId, {
       bookingId: booking.id,
       status: booking.status,
-      fieldName: firstItem?.field.name ?? 'Sân',
+      courtName: firstItem?.court.name,
     });
 
     for (const item of booking.items) {
       this.socketGateway.broadcastToVenue(item.venueId, 'booking:updated', {
         bookingId: booking.id,
         status: booking.status,
-        fieldId: item.fieldId,
-        fieldName: item.field.name,
+        courtId: item.courtId,
+        courtName: item.court.name,
         date: item.date.toISOString().split('T')[0],
         expiresAt: expiresAt.toISOString(),
       });
     }
 
     return booking;
+  }
+
+  async createWalkIn(user: JwtPayloadReturn, dto: CreateWalkInDto) {
+    if (user.role !== 'owner' && user.role !== 'admin') {
+      throw new ForbiddenException('Chỉ owner mới tạo booking walk-in');
+    }
+
+    const ownedVenueIds =
+      user.role === 'owner' ? await this.bookingsRepository.findOwnedVenueIds(user.id) : undefined;
+
+    const preparedItems = await this.prepareBookingItems(dto.items, ownedVenueIds);
+
+    const totalAmount = preparedItems.reduce((sum, item) => sum + item.subtotal, 0);
+    const discountAmount = 0;
+    const finalAmount = totalAmount - discountAmount;
+
+    const booking = await this.bookingsRepository.createWalkIn({
+      userId: user.id,
+      customerName: dto.customerName.trim(),
+      customerPhone: dto.customerPhone.trim(),
+      bookingCode: `WI${Date.now().toString(36).toUpperCase()}${Math.random().toString(36).slice(2, 6).toUpperCase()}`,
+      totalAmount,
+      discountAmount,
+      finalAmount,
+      note: dto.note,
+      items: preparedItems.map(({ courtName, venueName, venueIdForNotify, ...item }) => item),
+    });
+
+    if (!booking) {
+      throw new BadRequestException('Không thể tạo booking walk-in');
+    }
+
+    await this.bookingsRepository.createAuditLog({
+      actorId: user.id,
+      module: 'booking',
+      action: 'booking.walk_in',
+      entityType: 'booking',
+      entityId: booking.id,
+      toValue: booking.status,
+      note: booking.bookingCode,
+    });
+
+    const firstItem = booking.items[0];
+    const venueIds = [...new Set(booking.items.map((item) => item.venueId))];
+    await Promise.all(
+      venueIds.map((venueId) =>
+        this.notifyVenueOwners(
+          venueId,
+          'Walk-in mới',
+          `Walk-in ${booking.bookingCode} đã được tạo tại quầy`,
+        ),
+      ),
+    );
+
+    this.socketGateway.sendBookingStatusUpdate(booking.userId, {
+      bookingId: booking.id,
+      status: booking.status,
+      courtName: firstItem?.court.name,
+    });
+
+    for (const item of booking.items) {
+      this.socketGateway.broadcastToVenue(item.venueId, 'booking:updated', {
+        bookingId: booking.id,
+        status: booking.status,
+        courtId: item.courtId,
+        courtName: item.court.name,
+        date: item.date.toISOString().split('T')[0],
+      });
+    }
+
+    return booking;
+  }
+
+  private async prepareBookingItems(items: CreateBookingItemDto[], ownedVenueIds?: string[]) {
+    const preparedItems: Array<{
+      courtId: string;
+      venueId: string;
+      date: Date;
+      startTime: Date;
+      endTime: Date;
+      durationMinutes: number;
+      pricePerHour: number;
+      subtotal: number;
+      courtName: string;
+      venueName: string;
+      venueIdForNotify: string;
+    }> = [];
+
+    for (const item of items) {
+      const bookingDate = new Date(item.date);
+      if (Number.isNaN(bookingDate.getTime())) {
+        throw new BadRequestException('Ngày đặt sân không hợp lệ');
+      }
+
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const bookingDay = new Date(bookingDate);
+      bookingDay.setHours(0, 0, 0, 0);
+      if (bookingDay < today) {
+        throw new BadRequestException('Ngày đặt sân phải lớn hơn hiện tại');
+      }
+
+      const court = await this.bookingsRepository.findCourtById(item.courtId);
+      if (!court) {
+        throw new NotFoundException('Sân không tồn tại');
+      }
+      if (court.status !== 'active') {
+        throw new BadRequestException(`Sân ${court.name} hiện không nhận đặt lịch`);
+      }
+
+      if (ownedVenueIds && !ownedVenueIds.includes(court.venueId)) {
+        throw new ForbiddenException('Bạn chỉ được tạo walk-in cho sân của mình');
+      }
+
+      const startMinutes = this.parseTimeToMinutes(item.startTime);
+      const endMinutes = this.parseTimeToMinutes(item.endTime);
+      if (endMinutes <= startMinutes) {
+        throw new BadRequestException('Giờ kết thúc phải sau giờ bắt đầu');
+      }
+
+      const durationMinutes = endMinutes - startMinutes;
+      if (durationMinutes < court.minDurationMinutes) {
+        throw new BadRequestException(`Thời lượng tối thiểu là ${court.minDurationMinutes} phút`);
+      }
+      if ((durationMinutes - court.minDurationMinutes) % court.durationStepMinutes !== 0) {
+        throw new BadRequestException(
+          `Thời lượng phải theo bước nhảy ${court.durationStepMinutes} phút`,
+        );
+      }
+
+      const dayOfWeek = bookingDate.getDay();
+      const operatingHour = await this.bookingsRepository.findOperatingHour(
+        court.venueId,
+        dayOfWeek,
+      );
+      if (!operatingHour) {
+        throw new BadRequestException('Cơ sở không hoạt động vào ngày này');
+      }
+
+      const openMinutes = this.parseTimeToMinutes(operatingHour.openTime);
+      const closeMinutes = this.parseTimeToMinutes(operatingHour.closeTime);
+      if (startMinutes < openMinutes || endMinutes > closeMinutes) {
+        throw new BadRequestException('Khung giờ nằm ngoài giờ hoạt động của cơ sở');
+      }
+
+      const startTime = this.timeStringToDate(item.startTime);
+      const endTime = this.timeStringToDate(item.endTime);
+      const existingItems = await this.bookingsRepository.findActiveItemsForCourtDate(
+        item.courtId,
+        bookingDate,
+      );
+
+      const conflict = existingItems.some(
+        (existing) =>
+          existing.startTime.getTime() < endTime.getTime() &&
+          existing.endTime.getTime() > startTime.getTime(),
+      );
+      if (conflict) {
+        throw new ConflictException(`Khung giờ ${item.startTime}–${item.endTime} đã được đặt`);
+      }
+
+      preparedItems.push({
+        courtId: court.id,
+        venueId: court.venueId,
+        date: bookingDate,
+        startTime,
+        endTime,
+        durationMinutes,
+        pricePerHour: court.basePriceVnd,
+        subtotal: Math.round(court.basePriceVnd * (durationMinutes / 60)),
+        courtName: court.name,
+        venueName: court.venue.name,
+        venueIdForNotify: court.venueId,
+      });
+    }
+
+    return preparedItems;
   }
 
   async updateStatus(
@@ -269,7 +359,7 @@ export class BookingsService {
       return this.cancel(id, user);
     }
 
-    if (user.role !== 'admin' && user.role !== 'staff') {
+    if (user.role !== 'admin' && user.role !== 'owner') {
       throw new ForbiddenException('Bạn không có quyền cập nhật trạng thái booking');
     }
 
@@ -322,15 +412,15 @@ export class BookingsService {
     this.socketGateway.sendBookingStatusUpdate(booking.userId, {
       bookingId: booking.id,
       status: booking.status,
-      fieldName: firstItem?.field.name ?? 'Sân',
+      courtName: firstItem?.court.name,
     });
 
     for (const item of booking.items) {
       this.socketGateway.broadcastToVenue(item.venueId, 'booking:updated', {
         bookingId: booking.id,
         status: booking.status,
-        fieldId: item.fieldId,
-        fieldName: item.field.name,
+        courtId: item.courtId,
+        courtName: item.court.name,
         date: item.date.toISOString().split('T')[0],
       });
     }
@@ -351,10 +441,26 @@ export class BookingsService {
     }
 
     const canManage =
-      user.role === 'admin' || user.role === 'staff' || currentBooking.userId === user.id;
+      user.role === 'admin' || user.role === 'owner' || currentBooking.userId === user.id;
 
     if (!canManage) {
       throw new ForbiddenException('Bạn không có quyền hủy booking này');
+    }
+
+    if (user.role === 'user') {
+      const cancelHours = Number(process.env.BOOKING_CANCEL_HOURS_BEFORE || 8);
+      const firstItem = currentBooking.items[0];
+      if (firstItem) {
+        const playAt = new Date(firstItem.date);
+        const [h, m] = [firstItem.startTime.getUTCHours(), firstItem.startTime.getUTCMinutes()];
+        playAt.setHours(h, m, 0, 0);
+        const hoursUntil = (playAt.getTime() - Date.now()) / (1000 * 60 * 60);
+        if (hoursUntil < cancelHours) {
+          throw new BadRequestException(
+            `Chỉ được hủy miễn phí trước ít nhất ${cancelHours} giờ so với giờ chơi`,
+          );
+        }
+      }
     }
 
     const booking = await this.bookingsRepository.cancel(id);
@@ -391,23 +497,23 @@ export class BookingsService {
     this.socketGateway.sendBookingStatusUpdate(booking.userId, {
       bookingId: booking.id,
       status: booking.status,
-      fieldName: firstItem?.field.name ?? 'Sân',
+      courtName: firstItem?.court.name,
     });
 
     for (const item of booking.items) {
       this.socketGateway.broadcastToVenue(item.venueId, 'booking:updated', {
         bookingId: booking.id,
         status: booking.status,
-        fieldId: item.fieldId,
-        fieldName: item.field.name,
+        courtId: item.courtId,
+        courtName: item.court.name,
         date: item.date.toISOString().split('T')[0],
       });
     }
 
     await this.queueService.sendBookingCancelledEmail(booking.user.email, {
       name: booking.user.name,
-      fieldName: firstItem?.field.name ?? 'Sân',
-      date: firstItem?.date.toISOString().split('T')[0] ?? '',
+      fieldName: firstItem?.court.name,
+      date: firstItem?.date.toISOString().split('T')[0],
     });
 
     return booking;

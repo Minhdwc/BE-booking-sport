@@ -10,7 +10,7 @@ import {
   MinLength,
 } from 'class-validator';
 
-const USER_ROLES = ['user', 'staff', 'admin'];
+const USER_ROLES = ['user', 'owner', 'admin'];
 
 export class CreateUserDto {
   @IsString()

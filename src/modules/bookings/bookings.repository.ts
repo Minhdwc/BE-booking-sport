@@ -5,6 +5,13 @@ import { PrismaService } from '@/database/prisma.service';
 export class BookingsRepository {
   constructor(private readonly prisma: PrismaService) {}
 
+  findUserById(id: string) {
+    return this.prisma.user.findUnique({
+      where: { id },
+      select: { id: true, emailVerified: true },
+    });
+  }
+
   findAll(where?: Prisma.BookingWhereInput, skip?: number | 0, take?: number | 10) {
     return this.prisma.booking.findMany({
       where,
@@ -16,7 +23,7 @@ export class BookingsRepository {
         },
         items: {
           include: {
-            field: { include: { sport: true, venue: true } },
+            court: { include: { sport: true, venue: true } },
             venue: true,
           },
         },
@@ -39,7 +46,7 @@ export class BookingsRepository {
         },
         items: {
           include: {
-            field: { include: { sport: true, venue: true } },
+            court: { include: { sport: true, venue: true } },
             venue: true,
           },
         },
@@ -49,28 +56,34 @@ export class BookingsRepository {
   }
 
   async findOwnedVenueIds(userId: string) {
-    const ownerships = await this.prisma.venueOwner.findMany({
+    const venues = await this.prisma.venue.findMany({
       where: { userId },
-      select: { venueId: true },
+      select: { id: true },
     });
-    return ownerships.map((ownership) => ownership.venueId);
+    return venues.map((venue) => venue.id);
   }
 
-  findFieldById(id: string) {
-    return this.prisma.field.findUnique({
+  findCourtById(id: string) {
+    return this.prisma.court.findUnique({
       where: { id },
-      include: { venue: true },
+      include: { venue: { include: { operatingHours: true } } },
     });
   }
 
-  findActiveItemsForFieldDate(fieldId: string, date: Date, excludeBookingId?: string) {
+  findOperatingHour(venueId: string, dayOfWeek: number) {
+    return this.prisma.operatingHour.findUnique({
+      where: { venueId_dayOfWeek: { venueId, dayOfWeek } },
+    });
+  }
+
+  findActiveItemsForCourtDate(courtId: string, date: Date, excludeBookingId?: string) {
     return this.prisma.bookingItem.findMany({
       where: {
-        fieldId,
+        courtId,
         date,
         status: 'active',
         booking: {
-          status: { in: ['waiting_payment', 'confirmed', 'completed'] },
+          status: { in: ['waiting_payment', 'confirmed', 'completed', 'paid_at_venue'] },
           ...(excludeBookingId ? { id: { not: excludeBookingId } } : {}),
         },
       },
@@ -83,6 +96,85 @@ export class BookingsRepository {
     });
   }
 
+  createWalkIn(data: {
+    userId: string;
+    customerName: string;
+    customerPhone: string;
+    bookingCode: string;
+    totalAmount: number;
+    discountAmount: number;
+    finalAmount: number;
+    note?: string;
+    items: {
+      courtId: string;
+      venueId: string;
+      date: Date;
+      startTime: Date;
+      endTime: Date;
+      durationMinutes: number;
+      pricePerHour: number;
+      subtotal: number;
+    }[];
+  }) {
+    return this.prisma.$transaction(async (tx) => {
+      const booking = await tx.booking.create({
+        data: {
+          userId: data.userId,
+          customerName: data.customerName,
+          customerPhone: data.customerPhone,
+          bookingCode: data.bookingCode,
+          status: 'paid_at_venue',
+          totalAmount: data.totalAmount,
+          discountAmount: data.discountAmount,
+          finalAmount: data.finalAmount,
+          note: data.note,
+          expiresAt: null,
+          items: {
+            create: data.items,
+          },
+        },
+        include: {
+          user: {
+            select: { id: true, name: true, email: true, phone: true },
+          },
+          items: {
+            include: {
+              court: { include: { sport: true, venue: true } },
+              venue: true,
+            },
+          },
+          payments: true,
+        },
+      });
+
+      await tx.payment.create({
+        data: {
+          bookingId: booking.id,
+          amount: data.finalAmount,
+          method: 'paid_at_venue',
+          status: 'success',
+          paidAt: new Date(),
+        },
+      });
+
+      return tx.booking.findUnique({
+        where: { id: booking.id },
+        include: {
+          user: {
+            select: { id: true, name: true, email: true, phone: true },
+          },
+          items: {
+            include: {
+              court: { include: { sport: true, venue: true } },
+              venue: true,
+            },
+          },
+          payments: true,
+        },
+      });
+    });
+  }
+
   create(data: {
     userId: string;
     bookingCode: string;
@@ -91,9 +183,9 @@ export class BookingsRepository {
     discountAmount: number;
     finalAmount: number;
     note?: string;
-    expiresAt: Date;
-    items: Array<{
-      fieldId: string;
+    expiresAt?: Date;
+    items: {
+      courtId: string;
       venueId: string;
       date: Date;
       startTime: Date;
@@ -101,7 +193,7 @@ export class BookingsRepository {
       durationMinutes: number;
       pricePerHour: number;
       subtotal: number;
-    }>;
+    }[];
   }) {
     return this.prisma.booking.create({
       data: {
@@ -123,7 +215,7 @@ export class BookingsRepository {
         },
         items: {
           include: {
-            field: { include: { sport: true, venue: true } },
+            court: { include: { sport: true, venue: true } },
             venue: true,
           },
         },
@@ -142,7 +234,7 @@ export class BookingsRepository {
         },
         items: {
           include: {
-            field: { include: { sport: true, venue: true } },
+            court: { include: { sport: true, venue: true } },
             venue: true,
           },
         },
@@ -166,7 +258,7 @@ export class BookingsRepository {
             select: { id: true, name: true, email: true, phone: true },
           },
           items: {
-            include: { field: { include: { sport: true, venue: true } }, venue: true },
+            include: { court: { include: { sport: true, venue: true } }, venue: true },
           },
           payments: true,
         },
@@ -189,7 +281,7 @@ export class BookingsRepository {
             select: { id: true, name: true, email: true, phone: true },
           },
           items: {
-            include: { field: { include: { sport: true, venue: true } }, venue: true },
+            include: { court: { include: { sport: true, venue: true } }, venue: true },
           },
           payments: true,
         },
@@ -213,16 +305,17 @@ export class BookingsRepository {
   }
 
   async findVenueOwnerUserIds(venueId: string) {
-    const owners = await this.prisma.venueOwner.findMany({
-      where: { venueId },
+    const venue = await this.prisma.venue.findUnique({
+      where: { id: venueId },
       select: { userId: true },
     });
-    return owners.map((owner) => owner.userId);
+    if (!venue) return [];
+    return [venue.userId];
   }
 
   findVenueOwnersWithContact(venueId: string) {
-    return this.prisma.venueOwner.findMany({
-      where: { venueId },
+    return this.prisma.venue.findUnique({
+      where: { id: venueId },
       include: {
         user: { select: { email: true, name: true } },
       },

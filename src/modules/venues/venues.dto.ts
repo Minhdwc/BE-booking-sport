@@ -4,13 +4,10 @@ import {
   IsNumber,
   IsOptional,
   IsString,
-  Matches,
   Max,
   MaxLength,
   Min,
 } from 'class-validator';
-
-const TIME_HH_MM = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 export class DTOCreateVenue {
   @IsString()
@@ -19,7 +16,19 @@ export class DTOCreateVenue {
 
   @IsString()
   @IsNotEmpty()
-  location: string;
+  address: string;
+
+  @IsOptional()
+  @IsString()
+  district?: string;
+
+  @IsOptional()
+  @IsString()
+  city?: string;
+
+  @IsOptional()
+  @IsString()
+  phone?: string;
 
   @IsNumber()
   @Min(-180)
@@ -31,28 +40,6 @@ export class DTOCreateVenue {
   @Max(90)
   latitude: number;
 
-  /** Giờ mở cửa HH:mm */
-  @IsString()
-  @Matches(TIME_HH_MM, { message: 'openTime phải dạng HH:mm' })
-  openTime: string;
-
-  /** Giờ đóng cửa HH:mm */
-  @IsString()
-  @Matches(TIME_HH_MM, { message: 'closeTime phải dạng HH:mm' })
-  closeTime: string;
-
-  /** Bắt đầu nghỉ HH:mm */
-  @IsOptional()
-  @IsString()
-  @Matches(TIME_HH_MM, { message: 'restStartTime phải dạng HH:mm' })
-  restStartTime?: string;
-
-  /** Kết thúc nghỉ HH:mm */
-  @IsOptional()
-  @IsString()
-  @Matches(TIME_HH_MM, { message: 'restEndTime phải dạng HH:mm' })
-  restEndTime?: string;
-
   @IsOptional()
   @IsString()
   @MaxLength(500)
@@ -62,11 +49,6 @@ export class DTOCreateVenue {
   @IsArray()
   @IsString({ each: true })
   images?: string[];
-
-  @IsOptional()
-  @IsString()
-  @IsNotEmpty()
-  ownerId?: string;
 }
 
 export class DTOUpdateVenue {
@@ -78,7 +60,19 @@ export class DTOUpdateVenue {
   @IsOptional()
   @IsString()
   @IsNotEmpty()
-  location?: string;
+  address?: string;
+
+  @IsOptional()
+  @IsString()
+  district?: string;
+
+  @IsOptional()
+  @IsString()
+  city?: string;
+
+  @IsOptional()
+  @IsString()
+  phone?: string;
 
   @IsOptional()
   @IsNumber()
@@ -94,26 +88,6 @@ export class DTOUpdateVenue {
 
   @IsOptional()
   @IsString()
-  @Matches(TIME_HH_MM, { message: 'openTime phải dạng HH:mm' })
-  openTime?: string;
-
-  @IsOptional()
-  @IsString()
-  @Matches(TIME_HH_MM, { message: 'closeTime phải dạng HH:mm' })
-  closeTime?: string;
-
-  @IsOptional()
-  @IsString()
-  @Matches(TIME_HH_MM, { message: 'restStartTime phải dạng HH:mm' })
-  restStartTime?: string | null;
-
-  @IsOptional()
-  @IsString()
-  @Matches(TIME_HH_MM, { message: 'restEndTime phải dạng HH:mm' })
-  restEndTime?: string | null;
-
-  @IsOptional()
-  @IsString()
   @MaxLength(500)
   description?: string;
 
@@ -121,10 +95,4 @@ export class DTOUpdateVenue {
   @IsArray()
   @IsString({ each: true })
   images?: string[];
-}
-
-export class DTOAddVenueOwner {
-  @IsString()
-  @IsNotEmpty()
-  userId: string;
 }

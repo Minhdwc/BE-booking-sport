@@ -6,11 +6,12 @@ import { PrismaService } from '@/database/prisma.service';
 export class AuditLogsRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  findOwnedVenueIds(userId: string) {
-    return this.prisma.venueOwner.findMany({
+  async findOwnedVenueIds(userId: string) {
+    const venues = await this.prisma.venue.findMany({
       where: { userId },
-      select: { venueId: true },
+      select: { id: true },
     });
+    return venues.map((venue) => venue.id);
   }
 
   findBookingIds(venueIds: string[]) {

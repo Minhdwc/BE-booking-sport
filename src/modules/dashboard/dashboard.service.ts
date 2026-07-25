@@ -1,6 +1,6 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { CACHE_KEYS, CACHE_TTL, hashQuery } from '@/common/cache/cache.constants';
+import { CACHE_KEYS, CACHE_TTL } from '@/common/cache/cache.constants';
 import { RedisService } from '@/infrastructure/redis/redis.service';
 import { JwtPayloadReturn } from '@/utils/jwt.util';
 import { DashboardRepository } from './dashboard.repository';
@@ -14,10 +14,10 @@ export class DashboardService {
 
   async getSummary(user: JwtPayloadReturn, from?: string, to?: string) {
     const venueFilter = await this.resolveVenueFilter(user);
-    const cacheKey = CACHE_KEYS.dashboardSummary(
-      hashQuery({ role: user.role, from, to, venues: venueFilter?.join(',') ?? 'all' }),
+    const cacheKey = CACHE_KEYS.dashboard(
+      JSON.stringify({ role: user.role, from, to, venues: venueFilter }),
     );
-    const cached = await this.redis.getJson<any>(cacheKey);
+    const cached = await this.redis.getJson(cacheKey);
     if (cached) {
       return cached;
     }
@@ -61,26 +61,34 @@ export class DashboardService {
         : {}),
     };
 
-    const [[bookingsByStatus, revenueAgg, topFieldsRaw, topVenuesRaw], successfulPayments] =
+    const [[bookingsByStatus, revenueAgg, topCourtsRaw, topVenuesRaw], successfulPayments] =
       await Promise.all([
         this.repository.getSummaryData(bookingWhere, paymentWhere),
         this.repository.findSuccessfulPayments(paymentWhere),
       ]);
 
-    const fieldIds = topFieldsRaw.map((row) => row.fieldId);
+    const courtIds = topCourtsRaw.map((row) => row.courtId);
     const venueIds = topVenuesRaw.map((row) => row.venueId);
-    const [fields, venues] = await Promise.all([
-      fieldIds.length ? this.repository.findFieldsByIds(fieldIds) : [],
+    const [courts, venues] = await Promise.all([
+      courtIds.length ? this.repository.findCourtsByIds(courtIds) : [],
       venueIds.length ? this.repository.findVenuesByIds(venueIds) : [],
     ]);
-    const fieldMap = new Map(fields.map((field) => [field.id, field] as const));
+    const courtMap = new Map(courts.map((court) => [court.id, court] as const));
     const venueMap = new Map(venues.map((venue) => [venue.id, venue] as const));
 
     const revenueByDayMap = new Map<string, number>();
-    const revenueBySportMap = new Map<string, { sportId: string; sportName: string; total: number }>();
+    const revenueBySportMap = new Map<
+      string,
+      { sportId: string; sportName: string; total: number }
+    >();
     const topCustomersMap = new Map<
       string,
-      { userId: string; bookingCount: number; revenue: number; user: { id: string; name: string; email: string } | null }
+      {
+        userId: string;
+        bookingCount: number;
+        revenue: number;
+        user: { id: string; name: string; email: string } | null;
+      }
     >();
 
     for (const payment of successfulPayments) {
@@ -88,7 +96,7 @@ export class DashboardService {
       const dayKey = daySource.toISOString().slice(0, 10);
       revenueByDayMap.set(dayKey, (revenueByDayMap.get(dayKey) ?? 0) + payment.amount);
 
-      const sport = payment.booking?.items[0]?.field?.sport;
+      const sport = payment.booking?.items[0]?.court?.sport;
       if (sport) {
         const current = revenueBySportMap.get(sport.id);
         if (current) {
@@ -130,10 +138,10 @@ export class DashboardService {
         from: from ?? null,
         to: to ?? null,
       },
-      topFields: topFieldsRaw.map((row) => ({
-        fieldId: row.fieldId,
+      topCourts: topCourtsRaw.map((row) => ({
+        courtId: row.courtId,
         bookingCount: row._count._all,
-        field: fieldMap.get(row.fieldId) ?? null,
+        court: courtMap.get(row.courtId) ?? null,
       })),
       topVenues: topVenuesRaw.map((row) => ({
         venueId: row.venueId,
@@ -159,7 +167,7 @@ export class DashboardService {
       revenueBySport: Array.from(revenueBySportMap.values()).sort((a, b) => b.total - a.total),
     };
 
-    await this.redis.setJson(cacheKey, result, CACHE_TTL.dashboardSummary);
+    await this.redis.setJson(cacheKey, result, CACHE_TTL.dashboard);
     return result;
   }
 
@@ -168,9 +176,8 @@ export class DashboardService {
       return null;
     }
 
-    if (user.role === 'staff') {
-      const ownerships = await this.repository.findOwnedVenueIds(user.id);
-      const ownedVenueIds = ownerships.map((ownership) => ownership.venueId);
+    if (user.role === 'owner') {
+      const ownedVenueIds = await this.repository.findOwnedVenueIds(user.id);
       if (ownedVenueIds.length === 0) {
         throw new ForbiddenException('Tài khoản chưa được gán sân');
       }

@@ -10,7 +10,7 @@ import {
 import { Type } from 'class-transformer';
 import { PaginationQueryDto } from '@/common/dto/pagination.dto';
 
-export class FindAllFieldsQueryDto extends PaginationQueryDto {
+export class FindAllCourtsQueryDto extends PaginationQueryDto {
   @IsOptional()
   @IsString()
   venueId?: string;
@@ -32,12 +32,12 @@ export class FindAllFieldsQueryDto extends PaginationQueryDto {
   maxPrice?: number;
 }
 
-export class FieldAvailabilityQueryDto {
+export class CourtAvailabilityQueryDto {
   @IsDateString()
   date: string;
 }
 
-export class CreateFieldDto {
+export class CreateCourtDto {
   @IsString()
   @IsNotEmpty()
   name: string;
@@ -49,7 +49,7 @@ export class CreateFieldDto {
 
   @IsInt()
   @Min(0)
-  price: number;
+  basePriceVnd: number;
 
   @IsInt()
   @Min(15)
@@ -70,7 +70,7 @@ export class CreateFieldDto {
   venueId: string;
 }
 
-export class UpdateFieldDto {
+export class UpdateCourtDto {
   @IsOptional()
   @IsString()
   @IsNotEmpty()
@@ -84,7 +84,7 @@ export class UpdateFieldDto {
   @IsOptional()
   @IsInt()
   @Min(0)
-  price?: number;
+  basePriceVnd?: number;
 
   @IsOptional()
   @IsInt()

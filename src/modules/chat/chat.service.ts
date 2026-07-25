@@ -1,8 +1,4 @@
-import {
-  ForbiddenException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { SocketGateway } from '@/infrastructure/socket/socket.gateway';
 import { JwtPayloadReturn } from '@/utils/jwt.util';
 import { ChatRepository } from './chat.repository';
@@ -19,10 +15,8 @@ export class ChatService {
       return this.repository.findAllConversations();
     }
 
-    if (user.role === 'staff') {
-      const venueIds = (await this.repository.findOwnedVenueIds(user.id)).map(
-        (row) => row.venueId,
-      );
+    if (user.role === 'owner') {
+      const venueIds = (await this.repository.findOwnedVenueIds(user.id)).map((row) => row.venueId);
       if (venueIds.length === 0) {
         return [];
       }
@@ -102,7 +96,7 @@ export class ChatService {
       return conversation;
     }
 
-    if (user.role === 'staff') {
+    if (user.role === 'owner') {
       const ownedVenueIds = (await this.repository.findOwnedVenueIds(user.id)).map(
         (row) => row.venueId,
       );

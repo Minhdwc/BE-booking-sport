@@ -15,7 +15,7 @@ import { PaginationQueryDto } from '@/common/dto/pagination.dto';
 import { RolesGuard } from '@/common/guards';
 import { JwtPayloadReturn } from '@/utils/jwt.util';
 import { BookingsService } from './bookings.service';
-import { CreateBookingDto, UpdateBookingStatusDto } from './bookings.dto';
+import { CreateBookingDto, CreateWalkInDto, UpdateBookingStatusDto } from './bookings.dto';
 
 @Controller('bookings')
 export class BookingsController {
@@ -36,6 +36,13 @@ export class BookingsController {
     return this.bookingsService.findOne(id, user);
   }
 
+  @Post('walk-in')
+  @UseGuards(RolesGuard)
+  @Roles('owner', 'admin')
+  createWalkIn(@CurrentUser() user: JwtPayloadReturn, @Body() dto: CreateWalkInDto) {
+    return this.bookingsService.createWalkIn(user, dto);
+  }
+
   @Post()
   create(@CurrentUser() user: JwtPayloadReturn, @Body() createBookingDto: CreateBookingDto) {
     return this.bookingsService.create(user, createBookingDto);
@@ -43,7 +50,7 @@ export class BookingsController {
 
   @Patch(':id')
   @UseGuards(RolesGuard)
-  @Roles('admin', 'staff', 'user')
+  @Roles('admin', 'owner', 'user')
   update(
     @Param('id') id: string,
     @CurrentUser() user: JwtPayloadReturn,

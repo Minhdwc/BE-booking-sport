@@ -22,12 +22,12 @@ export class VenueSportsService {
     const { page, limit, skip } = getPagination(query);
     const { venueId, isActive } = query;
 
-    if (user.role !== 'admin' && user.role !== 'staff') {
+    if (user.role !== 'admin' && user.role !== 'owner') {
       throw new ForbiddenException('Không có quyền xem đăng ký bộ môn');
     }
 
     const ownedVenueIds =
-      user.role === 'staff' ? await this.repository.findOwnedVenueIds(user.id) : undefined;
+      user.role === 'owner' ? await this.repository.findOwnedVenueIds(user.id) : undefined;
 
     if (ownedVenueIds) {
       if (ownedVenueIds.length === 0) {
@@ -62,7 +62,7 @@ export class VenueSportsService {
       throw new NotFoundException('Đăng ký bộ môn không tồn tại');
     }
 
-    if (user.role === 'staff') {
+    if (user.role === 'owner') {
       const ownedVenueIds = await this.repository.findOwnedVenueIds(user.id);
       if (!ownedVenueIds.includes(item.venueId)) {
         throw new ForbiddenException('Bạn chỉ được thao tác trên sân của mình');
@@ -75,7 +75,7 @@ export class VenueSportsService {
   }
 
   async create(user: JwtPayloadReturn, dto: CreateVenueSportDto) {
-    if (user.role === 'staff') {
+    if (user.role === 'owner') {
       const ownedVenueIds = await this.repository.findOwnedVenueIds(user.id);
       if (!ownedVenueIds.includes(dto.venueId)) {
         throw new ForbiddenException('Bạn chỉ được quản lý bộ môn thuộc sân của mình');
@@ -113,7 +113,7 @@ export class VenueSportsService {
       throw new NotFoundException('Đăng ký bộ môn không tồn tại');
     }
 
-    if (user.role === 'staff') {
+    if (user.role === 'owner') {
       const ownedVenueIds = await this.repository.findOwnedVenueIds(user.id);
       if (!ownedVenueIds.includes(existing.venueId)) {
         throw new ForbiddenException('Bạn chỉ được quản lý bộ môn thuộc sân của mình');
@@ -134,7 +134,7 @@ export class VenueSportsService {
       throw new NotFoundException('Đăng ký bộ môn không tồn tại');
     }
 
-    if (user.role === 'staff') {
+    if (user.role === 'owner') {
       const ownedVenueIds = await this.repository.findOwnedVenueIds(user.id);
       if (!ownedVenueIds.includes(existing.venueId)) {
         throw new ForbiddenException('Bạn chỉ được quản lý bộ môn thuộc sân của mình');

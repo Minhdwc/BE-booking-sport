@@ -43,14 +43,14 @@ export class VenuePaymentAccountsController {
 
   @Post()
   @UseGuards(RolesGuard)
-  @Roles('admin', 'staff')
+  @Roles('admin', 'owner')
   create(@Body() dto: CreateVenuePaymentAccountDto, @CurrentUser() user: JwtPayloadReturn) {
     return this.service.create(user, dto);
   }
 
   @Patch(':id')
   @UseGuards(RolesGuard)
-  @Roles('admin', 'staff')
+  @Roles('admin', 'owner')
   update(
     @Param('id') id: string,
     @Body() dto: UpdateVenuePaymentAccountDto,
@@ -61,7 +61,7 @@ export class VenuePaymentAccountsController {
 
   @Post(':id/qr-code')
   @UseGuards(RolesGuard)
-  @Roles('admin', 'staff')
+  @Roles('admin', 'owner')
   @UseInterceptors(
     FileInterceptor('file', {
       storage: memoryStorage(),
@@ -78,7 +78,7 @@ export class VenuePaymentAccountsController {
 
   @Delete(':id')
   @UseGuards(RolesGuard)
-  @Roles('admin', 'staff')
+  @Roles('admin', 'owner')
   remove(@Param('id') id: string, @CurrentUser() user: JwtPayloadReturn) {
     return this.service.remove(id, user);
   }

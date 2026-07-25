@@ -8,13 +8,17 @@ import { PaymentInfrastructureModule } from '@/infrastructure/payment/payment.mo
 import { QueueModule } from '@/infrastructure/queue/queue.module';
 import { RedisModule } from '@/infrastructure/redis/redis.module';
 import { SocketModule } from '@/infrastructure/socket/socket.module';
+import { OperatingHoursModule } from './modules/operating-hours/operating-hours.module';
+import { PriceRulesModule } from './modules/price-rules/price-rules.module';
+import { CourtBlocksModule } from './modules/court-blocks/court-blocks.module';
+import { SupportTicketsModule } from './modules/support-tickets/support-tickets.module';
 import { AccountModule } from './modules/account/account.module';
 import { AmenitiesModule } from './modules/amenities/amenities.module';
 import { AuditLogsModule } from './modules/audit-logs/audit-logs.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { BookingsModule } from './modules/bookings/bookings.module';
 import { FavoritesModule } from './modules/favorites/favorites.module';
-import { FieldsModule } from './modules/fields/fields.module';
+import { CourtsModule } from './modules/courts/courts.module';
 import { HealthModule } from './modules/health/health.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { SearchModule } from './modules/search/search.module';
@@ -52,7 +56,10 @@ import { VenuesModule } from './modules/venues/venues.module';
     SportsModule,
     PaymentMethodsModule,
     VenuesModule,
-    FieldsModule,
+    OperatingHoursModule,
+    CourtsModule,
+    PriceRulesModule,
+    CourtBlocksModule,
     FavoritesModule,
     ReviewsModule,
     PaymentsModule,
@@ -61,6 +68,7 @@ import { VenuesModule } from './modules/venues/venues.module';
     VenueSportsModule,
     AmenitiesModule,
     BookingsModule,
+    SupportTicketsModule,
     NotificationsModule,
     UploadsModule,
     ReportsModule,

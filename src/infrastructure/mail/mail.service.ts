@@ -113,6 +113,39 @@ const renderBookingCancelledEmail = (data: BookingCancelledData): string => {
 </html>`;
 };
 
+const renderVerifyEmail = (name: string, verifyUrl: string): string => {
+  return `
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8" /></head>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,sans-serif;">
+  <div style="max-width:600px;margin:32px auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+    <div style="background:#2563eb;padding:32px;text-align:center;">
+      <h1 style="color:#fff;margin:0;font-size:24px;">✉️ Xác minh email của bạn</h1>
+    </div>
+    <div style="padding:32px;">
+      <p style="color:#374151;font-size:16px;">Xin chào <strong>${name}</strong>,</p>
+      <p style="color:#374151;">Cảm ơn bạn đã đăng ký tài khoản Minh Đức Booking Sport. Vui lòng xác minh email để hoàn tất đăng ký và sử dụng đầy đủ các tính năng.</p>
+      <table cellpadding="0" cellspacing="0" style="margin:24px 0;">
+        <tr>
+          <td style="background:#2563eb;border-radius:8px;">
+            <a href="${verifyUrl}" style="display:inline-block;padding:12px 24px;color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;">
+              Xác minh email
+            </a>
+          </td>
+        </tr>
+      </table>
+      <p style="color:#6b7280;font-size:14px;">Nếu bạn không tạo tài khoản này, hãy bỏ qua email này.</p>
+      <p style="color:#9ca3af;font-size:12px;word-break:break-all;">Hoặc copy link sau vào trình duyệt:<br />${verifyUrl}</p>
+    </div>
+    <div style="background:#f9fafb;padding:20px;text-align:center;">
+      <p style="color:#9ca3af;font-size:12px;margin:0;">Minh Đức Booking Sport - Hệ thống quản lý sân thể thao</p>
+    </div>
+  </div>
+</body>
+</html>`;
+};
+
 const renderWelcomeEmail = (name: string): string => {
   return `
 <!DOCTYPE html>
@@ -255,6 +288,20 @@ export class MailService {
       this.logger.log(`Welcome email sent to ${to}`);
     } catch (err) {
       this.logger.error(`Failed to send welcome email to ${to}`, err);
+    }
+  }
+
+  async sendVerifyEmail(to: string, name: string, verifyUrl: string): Promise<void> {
+    try {
+      await this.transporter.sendMail({
+        from: this.fromAddress,
+        to,
+        subject: '✉️ Xác minh email - Minh Đức Booking Sport',
+        html: renderVerifyEmail(name, verifyUrl),
+      });
+      this.logger.log(`Verify email sent to ${to}`);
+    } catch (err) {
+      this.logger.error(`Failed to send verify email to ${to}`, err);
     }
   }
 

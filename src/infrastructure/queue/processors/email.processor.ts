@@ -50,6 +50,14 @@ export class EmailProcessor extends WorkerHost {
         await this.mailService.sendWelcome(job.data.to, job.data.payload.name);
         break;
 
+      case EMAIL_JOBS.VERIFY_EMAIL:
+        await this.mailService.sendVerifyEmail(
+          job.data.to,
+          job.data.payload.name,
+          job.data.payload.verifyUrl,
+        );
+        break;
+
       default:
         this.logger.warn(`Unknown email job: ${job.name}`);
     }

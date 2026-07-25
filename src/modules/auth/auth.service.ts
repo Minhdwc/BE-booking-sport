@@ -1,4 +1,10 @@
-import { ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { QueueService } from '@/infrastructure/queue/queue.service';
 import { JwtProvider } from '@/utils/jwt.util';
@@ -78,7 +84,15 @@ export class AuthService {
       password: hashedPassword,
     });
 
+    const verifyToken = String(Math.floor(100000 + Math.random() * 900000));
+    await this.authRepository.updateVerifyToken(user.id, verifyToken);
+
     await this.queueService.sendWelcomeEmail(user.email, user.name);
+    await this.queueService.sendVerifyEmail(
+      user.email,
+      user.name,
+      `${process.env.FRONTEND_URL || 'http://localhost:3000'}/verify-email?token=${verifyToken}`,
+    );
 
     const tokenPayload = {
       id: user.id,
@@ -132,5 +146,43 @@ export class AuthService {
     );
 
     return { accessToken, refreshToken: newRefreshToken };
+  }
+
+  async verifyEmail(token: string) {
+    const user = await this.authRepository.findByVerifyToken(token);
+
+    if (!user) {
+      throw new BadRequestException('Token xác minh không hợp lệ hoặc đã hết hạn');
+    }
+
+    if (user.emailVerified) {
+      throw new BadRequestException('Email đã được xác minh');
+    }
+
+    await this.authRepository.markEmailVerified(user.id);
+
+    return { success: true, message: 'Email đã được xác minh thành công' };
+  }
+
+  async resendVerifyEmail(userId: string) {
+    const user = await this.authRepository.findById(userId);
+
+    if (!user) {
+      throw new NotFoundException('Không tìm thấy user');
+    }
+
+    if (user.emailVerified) {
+      throw new BadRequestException('Email đã được xác minh');
+    }
+
+    const verifyToken = String(Math.floor(100000 + Math.random() * 900000));
+    await this.authRepository.updateVerifyToken(userId, verifyToken);
+    await this.queueService.sendVerifyEmail(
+      user.email,
+      user.name,
+      `${process.env.FRONTEND_URL || 'http://localhost:3000'}/verify-email?token=${verifyToken}`,
+    );
+
+    return { success: true, message: 'Email xác minh đã được gửi lại' };
   }
 }

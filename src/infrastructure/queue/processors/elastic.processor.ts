@@ -35,7 +35,7 @@ export class ElasticProcessor extends WorkerHost {
     const venue = await this.prisma.venue.findUnique({
       where: { id: venueId },
       include: {
-        fields: {
+        courts: {
           where: { status: 'active' },
           include: { sport: true },
         },
@@ -47,14 +47,14 @@ export class ElasticProcessor extends WorkerHost {
       return;
     }
 
-    const sports = [...new Set(venue.fields.map((field) => field.sport.name))];
+    const sports = [...new Set(venue.courts.map((court) => court.sport.name))];
     const minPrice =
-      venue.fields.length > 0 ? Math.min(...venue.fields.map((field) => field.price)) : 0;
+      venue.courts.length > 0 ? Math.min(...venue.courts.map((court) => court.basePriceVnd)) : 0;
 
     await this.elasticsearch.indexVenue({
       id: venue.id,
       name: venue.name,
-      location: venue.location,
+      location: venue.address,
       description: venue.description,
       sports,
       minPrice,

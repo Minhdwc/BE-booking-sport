@@ -70,6 +70,14 @@ export class QueueService {
     );
   }
 
+  async sendVerifyEmail(to: string, name: string, verifyUrl: string) {
+    await this.emailQueue.add(
+      EMAIL_JOBS.VERIFY_EMAIL,
+      { to, payload: { name, verifyUrl } },
+      { attempts: 3, backoff: { type: 'exponential', delay: 5000 } },
+    );
+  }
+
   async createNotification(
     userId: string,
     title: string,
@@ -83,7 +91,7 @@ export class QueueService {
     );
   }
 
-  async scheduleBookingExpiry(bookingId: string, delayMs = 15 * 60 * 1000) {
+  async scheduleBookingExpiry(bookingId: string, delayMs = 600 * 1000) {
     await this.bookingQueue.add(
       BOOKING_JOBS.EXPIRE,
       { bookingId },
@@ -120,11 +128,7 @@ export class QueueService {
   }
 
   async deleteVenueFromElastic(venueId: string) {
-    await this.elasticQueue.add(
-      ELASTIC_JOBS.DELETE_VENUE,
-      { venueId },
-      { attempts: 3 },
-    );
+    await this.elasticQueue.add(ELASTIC_JOBS.DELETE_VENUE, { venueId }, { attempts: 3 });
   }
 
   async recordPaymentStatistic(paymentId: string) {
@@ -140,7 +144,11 @@ export class QueueService {
   }
 
   async recordFavoriteToggled(venueId: string, delta: number) {
-    await this.statisticQueue.add(STATISTIC_JOBS.FAVORITE_TOGGLED, { venueId, delta }, { attempts: 3 });
+    await this.statisticQueue.add(
+      STATISTIC_JOBS.FAVORITE_TOGGLED,
+      { venueId, delta },
+      { attempts: 3 },
+    );
   }
 
   async recordVenueView(venueId: string) {

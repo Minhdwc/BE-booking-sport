@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '@/database/prisma.service';
 
+
 @Injectable()
 export class VenuesRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -13,13 +14,14 @@ export class VenuesRepository {
       take,
       orderBy: { createdAt: 'desc' },
       include: {
-        fields: {
+        courts: {
           where: { status: 'active' },
           include: { sport: true },
         },
         venueImages: {
           orderBy: { position: 'asc' },
         },
+        operatingHours: true,
       },
     });
   }
@@ -32,13 +34,15 @@ export class VenuesRepository {
     return this.prisma.venue.findUnique({
       where: { id },
       include: {
-        fields: {
+        courts: {
           where: { status: 'active' },
-          include: { sport: true, fieldImages: { orderBy: { position: 'asc' } } },
+          include: { sport: true, courtImages: { orderBy: { position: 'asc' } } },
         },
         venueImages: {
           orderBy: { position: 'asc' },
         },
+        operatingHours: true,
+        user: { select: { id: true, name: true, email: true, phone: true } },
       },
     });
   }
@@ -47,11 +51,11 @@ export class VenuesRepository {
     return this.prisma.venue.findUnique({ where: { id } });
   }
 
-  findByOwnerId(ownerId: string) {
+  findByOwnerId(userId: string) {
     return this.prisma.venue.findMany({
-      where: { venueOwners: { some: { userId: ownerId } } },
+      where: { userId },
       include: {
-        venueOwners: true,
+        user: { select: { id: true, name: true, email: true, phone: true } },
         venueImages: {
           orderBy: { position: 'asc' },
         },
@@ -61,44 +65,37 @@ export class VenuesRepository {
 
   create(data: {
     name: string;
-    location: string;
+    address: string;
+    district?: string;
+    city?: string;
+    phone?: string;
     longitude: number;
     latitude: number;
-    openTime: string;
-    closeTime: string;
-    restStartTime?: string;
-    restEndTime?: string;
     description?: string;
-    ownerId?: string;
+    userId: string;
   }) {
     return this.prisma.venue.create({
       data: {
         name: data.name,
-        location: data.location,
+        address: data.address,
+        district: data.district,
+        city: data.city,
+        phone: data.phone,
         longitude: data.longitude,
         latitude: data.latitude,
-        openTime: data.openTime,
-        closeTime: data.closeTime,
-        restStartTime: data.restStartTime,
-        restEndTime: data.restEndTime,
         description: data.description,
-        ...(data.ownerId
-          ? {
-              venueOwners: {
-                create: { userId: data.ownerId },
-              },
-            }
-          : {}),
+        userId: data.userId,
       },
       include: {
-        venueOwners: {
-          include: {
-            user: { select: { id: true, name: true, email: true, role: true } },
-          },
+        courts: {
+          where: { status: 'active' },
+          include: { sport: true },
         },
         venueImages: {
           orderBy: { position: 'asc' },
         },
+        operatingHours: true,
+        user: { select: { id: true, name: true, email: true, phone: true } },
       },
     });
   }
@@ -107,13 +104,12 @@ export class VenuesRepository {
     id: string,
     data: {
       name?: string;
-      location?: string;
+      address?: string;
+      district?: string;
+      city?: string;
+      phone?: string;
       longitude?: number;
       latitude?: number;
-      openTime?: string;
-      closeTime?: string;
-      restStartTime?: string;
-      restEndTime?: string;
       description?: string;
     },
   ) {
@@ -124,6 +120,7 @@ export class VenuesRepository {
         venueImages: {
           orderBy: { position: 'asc' },
         },
+        operatingHours: true,
       },
     });
   }
@@ -143,50 +140,21 @@ export class VenuesRepository {
     return this.prisma.user.findUnique({ where: { id } });
   }
 
-  findOwnedVenueIds(userId: string) {
-    return this.prisma.venueOwner.findMany({
+  async findOwnedVenueIds(userId: string) {
+    const venues = await this.prisma.venue.findMany({
       where: { userId },
-      select: { venueId: true },
+      select: { id: true },
     });
+    return venues.map((venue) => venue.id);
   }
 
-  listOwners(venueId: string) {
-    return this.prisma.venueOwner.findMany({
-      where: { venueId },
-      include: {
-        user: {
-          select: { id: true, name: true, email: true, phone: true, role: true },
-        },
-      },
-      orderBy: { createdAt: 'desc' },
+  async findVenueOwnerUserIds(venueId: string) {
+    const venue = await this.prisma.venue.findUnique({
+      where: { id: venueId },
+      select: { userId: true },
     });
-  }
-
-  upsertOwner(venueId: string, userId: string) {
-    return this.prisma.venueOwner.upsert({
-      where: {
-        venueId_userId: { venueId, userId },
-      },
-      update: {},
-      create: { venueId, userId },
-      include: {
-        user: {
-          select: { id: true, name: true, email: true, phone: true, role: true },
-        },
-      },
-    });
-  }
-
-  findOwner(venueId: string, userId: string) {
-    return this.prisma.venueOwner.findUnique({
-      where: {
-        venueId_userId: { venueId, userId },
-      },
-    });
-  }
-
-  deleteOwner(id: string) {
-    return this.prisma.venueOwner.delete({ where: { id } });
+    if (!venue) return [];
+    return [venue.userId];
   }
 
   findVenueImages(venueId: string) {

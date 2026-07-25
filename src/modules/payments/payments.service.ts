@@ -34,7 +34,7 @@ export class PaymentsService {
 
     if (user.role === 'admin') {
       where = undefined;
-    } else if (user.role === 'staff') {
+    } else if (user.role === 'owner') {
       const ownedVenueIds = await this.paymentsRepository.findOwnedVenueIds(user.id);
       if (ownedVenueIds.length === 0) {
         throw new ForbiddenException('Tài khoản chưa được gán sân');
@@ -63,7 +63,7 @@ export class PaymentsService {
       return payment;
     }
 
-    if (user.role === 'staff') {
+    if (user.role === 'owner') {
       const ownedVenueIds = await this.paymentsRepository.findOwnedVenueIds(user.id);
       const hasAccess = payment.booking.items.some((item) => ownedVenueIds.includes(item.venueId));
       if (!hasAccess) {
@@ -86,21 +86,21 @@ export class PaymentsService {
       throw new NotFoundException('Booking không tồn tại');
     }
 
-    if (user.role === 'staff') {
-      throw new ForbiddenException('Staff không được tạo thanh toán');
+    if (user.role === 'owner') {
+      throw new ForbiddenException('Owner không được tạo thanh toán');
     }
 
     if (user.role !== 'admin' && booking.userId !== user.id) {
       throw new ForbiddenException('Bạn chỉ được tạo thanh toán của mình');
     }
 
-    let method = dto.method ?? 'bank_transfer';
+    let method = dto.method;
 
     if (dto.venuePaymentAccountId) {
       const account = await this.paymentsRepository.findVenuePaymentAccountById(
         dto.venuePaymentAccountId,
       );
-      if (!account || !booking.items.some((item) => item.field.venueId === account.venueId)) {
+      if (!account || !booking.items.some((item) => item.court.venueId === account.venueId)) {
         throw new BadRequestException('Tài khoản thanh toán không thuộc venue của booking');
       }
       if (!account.isActive) {
@@ -113,7 +113,7 @@ export class PaymentsService {
       bookingId: dto.bookingId,
       amount: booking.finalAmount,
       method,
-      status: user.role === 'user' ? 'pending' : (dto.status ?? 'pending'),
+      status: user.role === 'user' ? 'pending' : dto.status,
       venuePaymentAccountId: dto.venuePaymentAccountId,
     });
   }
@@ -125,8 +125,8 @@ export class PaymentsService {
       throw new NotFoundException('Booking không tồn tại');
     }
 
-    if (user.role === 'staff') {
-      throw new ForbiddenException('Staff không được tạo thanh toán');
+    if (user.role === 'owner') {
+      throw new ForbiddenException('Owner không được tạo thanh toán');
     }
 
     if (user.role !== 'admin' && booking.userId !== user.id) {
@@ -134,7 +134,9 @@ export class PaymentsService {
     }
 
     if (booking.status !== 'waiting_payment') {
-      throw new BadRequestException('Chỉ booking đang giữ chỗ (waiting_payment) mới được thanh toán');
+      throw new BadRequestException(
+        'Chỉ booking đang giữ chỗ (waiting_payment) mới được thanh toán',
+      );
     }
 
     if (booking.expiresAt && booking.expiresAt.getTime() <= Date.now()) {
@@ -180,7 +182,7 @@ export class PaymentsService {
       ...(data.status && { status: data.status }),
       ...(data.venuePaymentAccountId && { venuePaymentAccountId: data.venuePaymentAccountId }),
       ...(data.transactionCode && { transactionCode: data.transactionCode }),
-      ...(data.status === 'success' && { paidAt: existing.paidAt ?? new Date() }),
+      ...(data.status === 'success' && { paidAt: existing.paidAt }),
     });
 
     if (data.status && data.status !== oldStatus) {
@@ -248,8 +250,8 @@ export class PaymentsService {
   ) {
     const payment = await this.findOne(paymentId, user);
 
-    if (user.role === 'staff') {
-      throw new ForbiddenException('Staff không được thanh toán thay user');
+    if (user.role === 'owner') {
+      throw new ForbiddenException('Owner không được thanh toán thay user');
     }
 
     if (payment.status === 'success') {
@@ -297,7 +299,7 @@ export class PaymentsService {
     this.socketGateway.sendBookingStatusUpdate(user.id, {
       bookingId: updated.bookingId,
       status: 'confirmed',
-      fieldName: updated.booking.items[0]?.field.name ?? 'Sân',
+      courtName: updated.booking.items[0]?.court.name,
     });
 
     return {
@@ -405,7 +407,7 @@ export class PaymentsService {
     method?: string,
   ) {
     const existing = await this.paymentsRepository.findById(paymentId);
-    const oldStatus = existing?.status ?? 'pending';
+    const oldStatus = existing?.status;
 
     const payment = await this.paymentsRepository.markSuccess(
       paymentId,
@@ -439,7 +441,7 @@ export class PaymentsService {
     bookingId: string;
     booking: {
       user: { id: string; name: string; email: string };
-      items: Array<{ venueId: string; field: { name?: string; venue?: { name?: string } } }>;
+      items: Array<{ venueId: string; court: { name?: string; venue?: { name?: string } } }>;
     };
   }) {
     await this.queueService.sendPaymentConfirmationEmail(payment.booking.user.email, {

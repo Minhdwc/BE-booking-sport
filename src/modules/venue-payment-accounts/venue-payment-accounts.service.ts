@@ -37,12 +37,12 @@ export class VenuePaymentAccountsService {
     const { page, limit, skip } = getPagination(query);
     const venueId = query.venueId;
 
-    if (user.role !== 'admin' && user.role !== 'staff') {
+    if (user.role !== 'admin' && user.role !== 'owner') {
       throw new ForbiddenException('Không có quyền xem tài khoản thanh toán');
     }
 
     const ownedVenueIds =
-      user.role === 'staff' ? await this.repository.findOwnedVenueIds(user.id) : undefined;
+      user.role === 'owner' ? await this.repository.findOwnedVenueIds(user.id) : undefined;
 
     if (ownedVenueIds) {
       if (ownedVenueIds.length === 0) {
@@ -107,7 +107,7 @@ export class VenuePaymentAccountsService {
       bankCode: fields.bankCode?.trim(),
       bankName: fields.bankName?.trim(),
       qrCodeUrl: fields.qrCodeUrl?.trim(),
-      isActive: dto.isActive ?? true,
+      isActive: dto.isActive,
     });
   }
 
@@ -170,7 +170,7 @@ export class VenuePaymentAccountsService {
   private async assertCanManageVenue(user: JwtPayloadReturn, venueId: string) {
     if (user.role === 'admin') return;
 
-    if (user.role !== 'staff') {
+    if (user.role !== 'owner') {
       throw new ForbiddenException('Không có quyền thao tác tài khoản thanh toán');
     }
 

@@ -12,9 +12,8 @@ export class AuditLogsService {
     const { page, limit, skip } = getPagination(query);
     const where: Prisma.AuditLogWhereInput = {};
 
-    if (user.role === 'staff') {
-      const ownerships = await this.auditLogsRepository.findOwnedVenueIds(user.id);
-      const ownedVenueIds = ownerships.map((o) => o.venueId);
+    if (user.role === 'owner') {
+      const ownedVenueIds = await this.auditLogsRepository.findOwnedVenueIds(user.id);
       if (ownedVenueIds.length === 0) {
         throw new ForbiddenException('Tài khoản chưa được gán sân');
       }

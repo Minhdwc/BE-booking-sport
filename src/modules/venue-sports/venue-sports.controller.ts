@@ -22,7 +22,7 @@ import { VenueSportsService } from './venue-sports.service';
 
 @Controller('venue-sports')
 @UseGuards(RolesGuard)
-@Roles('admin', 'staff')
+@Roles('admin', 'owner')
 export class VenueSportsController {
   constructor(private readonly service: VenueSportsService) {}
 

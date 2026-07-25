@@ -9,33 +9,33 @@ import { getPagination, toPaginatedResult } from '@/common/dto/pagination.dto';
 import { S3Service } from '@/infrastructure/aws/s3.service';
 import { QueueService } from '@/infrastructure/queue/queue.service';
 import { RedisService } from '@/infrastructure/redis/redis.service';
-import { CACHE_KEYS, CACHE_TTL, hashQuery } from '@/common/cache/cache.constants';
+import { CACHE_KEYS, CACHE_TTL } from '@/common/cache/cache.constants';
 import { JwtPayloadReturn } from '@/utils/jwt.util';
-import { CreateFieldDto, FindAllFieldsQueryDto, UpdateFieldDto } from './fields.dto';
-import { FieldsRepository } from './fields.repository';
+import { CreateCourtDto, FindAllCourtsQueryDto, UpdateCourtDto } from './courts.dto';
+import { CourtsRepository } from './courts.repository';
 
 @Injectable()
-export class FieldsService {
+export class CourtsService {
   constructor(
-    private readonly fieldsRepository: FieldsRepository,
+    private readonly courtsRepository: CourtsRepository,
     private readonly s3Service: S3Service,
     private readonly redis: RedisService,
     private readonly queueService: QueueService,
   ) {}
 
-  async findAll(user?: JwtPayloadReturn, query: FindAllFieldsQueryDto = {}) {
+  async findAll(user?: JwtPayloadReturn, query: FindAllCourtsQueryDto = {}) {
     const { page, limit, skip } = getPagination(query);
-    const where: Prisma.FieldWhereInput = {};
+    const where: Prisma.CourtWhereInput = {};
 
     const ownedVenueIds =
-      user?.role === 'staff' ? await this.fieldsRepository.findOwnedVenueIds(user.id) : undefined;
+      user?.role === 'owner' ? await this.courtsRepository.findOwnedVenueIds(user.id) : undefined;
 
     if (ownedVenueIds) {
       if (ownedVenueIds.length === 0) {
         return toPaginatedResult([], 0, page, limit);
       }
       if (query.venueId && !ownedVenueIds.includes(query.venueId)) {
-        throw new ForbiddenException('Bạn chỉ được xem field thuộc sân của mình');
+        throw new ForbiddenException('Bạn chỉ được xem court thuộc sân của mình');
       }
     }
 
@@ -50,7 +50,7 @@ export class FieldsService {
     }
 
     if (query.minPrice != null || query.maxPrice != null) {
-      where.price = {
+      where.basePriceVnd = {
         ...(query.minPrice != null ? { gte: query.minPrice } : {}),
         ...(query.maxPrice != null ? { lte: query.maxPrice } : {}),
       };
@@ -68,110 +68,110 @@ export class FieldsService {
       ];
     }
 
-    const cacheKey = CACHE_KEYS.fieldList(
-      hashQuery({
+    const cacheKey = CACHE_KEYS.courtList(
+      JSON.stringify({
         page,
         limit,
-        venueId: query.venueId ?? '',
-        sportId: query.sportId ?? '',
-        search: query.search ?? '',
-        role: user?.role ?? 'public',
+        venueId: query.venueId,
+        sportId: query.sportId,
+        search: query.search,
+        role: user?.role,
       }),
     );
-    const cached = await this.redis.getJson<any>(cacheKey);
+    const cached = await this.redis.getJson(cacheKey);
     if (cached) {
       return cached;
     }
 
     const [data, total] = await Promise.all([
-      this.fieldsRepository.findAll(where, skip, limit),
-      this.fieldsRepository.count(where),
+      this.courtsRepository.findAll(where, skip, limit),
+      this.courtsRepository.count(where),
     ]);
 
     const result = toPaginatedResult(data, total, page, limit);
-    await this.redis.setJson(cacheKey, result, CACHE_TTL.fieldList);
+    await this.redis.setJson(cacheKey, result, CACHE_TTL.courtList);
     return result;
   }
 
-  private async invalidateFieldCache(fieldId?: string, venueId?: string) {
-    await this.redis.invalidatePattern(CACHE_KEYS.fieldListPattern);
-    if (fieldId) {
-      await this.redis.del(CACHE_KEYS.fieldDetail(fieldId));
+  private async invalidateCourtCache(courtId?: string, venueId?: string) {
+    await this.redis.invalidatePattern(CACHE_KEYS.courtList('*'));
+    if (courtId) {
+      await this.redis.del(CACHE_KEYS.courtDetail(courtId));
     }
     if (venueId) {
       await this.redis.del(CACHE_KEYS.venueDetail(venueId));
-      await this.redis.invalidatePattern(CACHE_KEYS.venueListPattern);
+      await this.redis.invalidatePattern(CACHE_KEYS.venueList('*'));
     }
   }
 
   async findOne(id: string, user?: JwtPayloadReturn) {
-    const cacheKey = CACHE_KEYS.fieldDetail(id);
+    const cacheKey = CACHE_KEYS.courtDetail(id);
     const cached = await this.redis.getJson<any>(cacheKey);
     if (cached) {
-      if (user?.role === 'staff') {
-        const ownedVenueIds = await this.fieldsRepository.findOwnedVenueIds(user.id);
+      if (user?.role === 'owner') {
+        const ownedVenueIds = await this.courtsRepository.findOwnedVenueIds(user.id);
         if (!ownedVenueIds.includes(cached.venueId)) {
-          throw new ForbiddenException('Bạn chỉ được xem field thuộc sân của mình');
+          throw new ForbiddenException('Bạn chỉ được xem court thuộc sân của mình');
         }
       }
       return cached;
     }
 
-    const field = await this.fieldsRepository.findById(id);
+    const court = await this.courtsRepository.findById(id);
 
-    if (!field) {
-      throw new NotFoundException('Field không tồn tại');
+    if (!court) {
+      throw new NotFoundException('Court không tồn tại');
     }
 
     if (!user || user.role === 'user') {
-      if (field.status !== 'active') {
-        throw new NotFoundException('Field không tồn tại');
+      if (court.status !== 'active') {
+        throw new NotFoundException('Court không tồn tại');
       }
-      await this.redis.setJson(cacheKey, field, CACHE_TTL.fieldDetail);
-      return field;
+      await this.redis.setJson(cacheKey, court, CACHE_TTL.courtDetail);
+      return court;
     }
 
     if (user.role === 'admin') {
-      await this.redis.setJson(cacheKey, field, CACHE_TTL.fieldDetail);
-      return field;
+      await this.redis.setJson(cacheKey, court, CACHE_TTL.courtDetail);
+      return court;
     }
 
-    const ownedVenueIds = await this.fieldsRepository.findOwnedVenueIds(user.id);
+    const ownedVenueIds = await this.courtsRepository.findOwnedVenueIds(user.id);
     if (ownedVenueIds.length === 0) {
       throw new ForbiddenException('Tài khoản chưa được gán sân');
     }
-    if (!ownedVenueIds.includes(field.venueId)) {
+    if (!ownedVenueIds.includes(court.venueId)) {
       throw new ForbiddenException('Bạn chỉ được thao tác trên sân của mình');
     }
 
-    await this.redis.setJson(cacheKey, field, CACHE_TTL.fieldDetail);
-    return field;
+    await this.redis.setJson(cacheKey, court, CACHE_TTL.courtDetail);
+    return court;
   }
 
-  async create(user: JwtPayloadReturn, dto: CreateFieldDto) {
-    if (user.role === 'staff') {
-      const ownedVenueIds = await this.fieldsRepository.findOwnedVenueIds(user.id);
+  async create(user: JwtPayloadReturn, dto: CreateCourtDto) {
+    if (user.role === 'owner') {
+      const ownedVenueIds = await this.courtsRepository.findOwnedVenueIds(user.id);
       if (ownedVenueIds.length === 0) {
         throw new ForbiddenException('Tài khoản chưa được gán sân');
       }
       if (!ownedVenueIds.includes(dto.venueId)) {
-        throw new ForbiddenException('Bạn chỉ được tạo field cho sân của mình');
+        throw new ForbiddenException('Bạn chỉ được tạo court cho sân của mình');
       }
     }
 
-    const sport = await this.fieldsRepository.findSportById(dto.sportId);
+    const sport = await this.courtsRepository.findSportById(dto.sportId);
     if (!sport) {
       throw new NotFoundException('Sport không tồn tại');
     }
 
-    const venue = await this.fieldsRepository.findVenueById(dto.venueId);
+    const venue = await this.courtsRepository.findVenueById(dto.venueId);
     if (!venue) {
       throw new NotFoundException('Venue không tồn tại');
     }
 
-    const field = await this.fieldsRepository.create({
+    const court = await this.courtsRepository.create({
       name: dto.name,
-      price: dto.price,
+      basePriceVnd: dto.basePriceVnd,
       minDurationMinutes: dto.minDurationMinutes,
       durationStepMinutes: dto.durationStepMinutes,
       sportId: dto.sportId,
@@ -180,53 +180,60 @@ export class FieldsService {
       status: dto.status,
     });
 
-    await this.invalidateFieldCache(undefined, dto.venueId);
+    await this.invalidateCourtCache(undefined, dto.venueId);
     await this.queueService.syncVenueToElastic(dto.venueId);
-    return field;
+    return court;
   }
 
-  async update(id: string, user: JwtPayloadReturn, data: UpdateFieldDto) {
+  async update(id: string, user: JwtPayloadReturn, data: UpdateCourtDto) {
     await this.findOne(id, user);
 
-    if (user.role === 'staff' && data.venueId) {
-      const ownedVenueIds = await this.fieldsRepository.findOwnedVenueIds(user.id);
+    if (user.role === 'owner' && data.venueId) {
+      const ownedVenueIds = await this.courtsRepository.findOwnedVenueIds(user.id);
       if (ownedVenueIds.length === 0) {
         throw new ForbiddenException('Tài khoản chưa được gán sân');
       }
       if (!ownedVenueIds.includes(data.venueId)) {
-        throw new ForbiddenException('Bạn không được chuyển field sang sân khác');
+        throw new ForbiddenException('Bạn không được chuyển court sang sân khác');
       }
     }
 
     if (data.sportId) {
-      const sport = await this.fieldsRepository.findSportById(data.sportId);
+      const sport = await this.courtsRepository.findSportById(data.sportId);
       if (!sport) {
         throw new NotFoundException('Sport không tồn tại');
       }
     }
 
     if (data.venueId) {
-      const venue = await this.fieldsRepository.findVenueById(data.venueId);
+      const venue = await this.courtsRepository.findVenueById(data.venueId);
       if (!venue) {
         throw new NotFoundException('Venue không tồn tại');
       }
     }
 
-    const field = await this.fieldsRepository.update(id, data);
-    await this.invalidateFieldCache(id, field.venueId);
-    await this.queueService.syncVenueToElastic(field.venueId);
-    return field;
+    const court = await this.courtsRepository.update(id, data);
+    await this.invalidateCourtCache(id, court.venueId);
+    await this.queueService.syncVenueToElastic(court.venueId);
+    return court;
   }
 
   async remove(id: string, user: JwtPayloadReturn) {
-    const field = await this.findOne(id, user);
+    const court = await this.findOne(id, user);
 
-    const images = await this.fieldsRepository.findFieldImages(id);
-    await Promise.all(images.map((image) => this.safeDeleteS3ByUrl(image.url)));
+    const images = await this.courtsRepository.findCourtImages(id);
+    await Promise.all(
+      images.map((image) => {
+        const key = new URL(image.url).pathname.replace(/^\//, '');
+        if (key) {
+          return this.s3Service.delete(key);
+        }
+      }),
+    );
 
-    const deleted = await this.fieldsRepository.delete(id);
-    await this.invalidateFieldCache(id, field.venueId);
-    await this.queueService.syncVenueToElastic(field.venueId);
+    const deleted = await this.courtsRepository.delete(id);
+    await this.invalidateCourtCache(id, court.venueId);
+    await this.queueService.syncVenueToElastic(court.venueId);
     return deleted;
   }
 
@@ -237,44 +244,47 @@ export class FieldsService {
 
     await this.findOne(id, user);
 
-    const uploaded = await this.s3Service.upload(file, 'fields');
-    const count = await this.fieldsRepository.countFieldImages(id);
+    const uploaded = await this.s3Service.upload(file, 'courts');
+    const count = await this.courtsRepository.countCourtImages(id);
 
-    return this.fieldsRepository.createFieldImage({
-      fieldId: id,
+    return this.courtsRepository.createCourtImage({
+      courtId: id,
       url: uploaded.url,
       position: count,
       isThumbnail: count === 0,
     });
   }
 
-  async removeImage(fieldId: string, imageId: string, user: JwtPayloadReturn) {
-    await this.findOne(fieldId, user);
+  async removeImage(courtId: string, imageId: string, user: JwtPayloadReturn) {
+    await this.findOne(courtId, user);
 
-    const image = await this.fieldsRepository.findFieldImageById(imageId);
-    if (!image || image.fieldId !== fieldId) {
+    const image = await this.courtsRepository.findCourtImageById(imageId);
+    if (!image || image.courtId !== courtId) {
       throw new NotFoundException('Ảnh không tồn tại');
     }
 
-    await this.safeDeleteS3ByUrl(image.url);
-    return this.fieldsRepository.deleteFieldImage(imageId);
+    const key = new URL(image.url).pathname.replace(/^\//, '');
+    if (key) {
+      await this.s3Service.delete(key);
+    }
+    return this.courtsRepository.deleteCourtImage(imageId);
   }
 
   async getAvailability(id: string, date: string, user?: JwtPayloadReturn) {
-    const field = await this.findOne(id, user);
+    const court = await this.findOne(id, user);
     const bookingDate = new Date(date);
     if (Number.isNaN(bookingDate.getTime())) {
       throw new BadRequestException('Ngày không hợp lệ');
     }
 
-    const open = this.parseTimeToMinutes(field.venue.openTime);
-    const close = this.parseTimeToMinutes(field.venue.closeTime);
-    const restStart = field.venue.restStartTime
-      ? this.parseTimeToMinutes(field.venue.restStartTime)
-      : null;
-    const restEnd = field.venue.restEndTime
-      ? this.parseTimeToMinutes(field.venue.restEndTime)
-      : null;
+    const dayOfWeek = bookingDate.getDay();
+    const operatingHour = await this.courtsRepository.findOperatingHour(court.venueId, dayOfWeek);
+    if (!operatingHour) {
+      return { courtId: id, date, slots: [] };
+    }
+
+    const open = this.parseTimeToMinutes(operatingHour.openTime);
+    const close = this.parseTimeToMinutes(operatingHour.closeTime);
 
     const generatedSlots: Array<{
       startTime: string;
@@ -285,25 +295,21 @@ export class FieldsService {
 
     for (
       let start = open;
-      start + field.minDurationMinutes <= close;
-      start += field.durationStepMinutes
+      start + court.minDurationMinutes <= close;
+      start += court.durationStepMinutes
     ) {
-      const end = start + field.minDurationMinutes;
-      if (restStart !== null && restEnd !== null && start < restEnd && end > restStart) {
-        continue;
-      }
-
+      const end = start + court.minDurationMinutes;
       const startTime = this.minutesToTimeString(start);
       const endTime = this.minutesToTimeString(end);
       generatedSlots.push({
         startTime,
         endTime,
-        durationMinutes: field.minDurationMinutes,
-        subtotal: Math.round(field.price * (field.minDurationMinutes / 60)),
+        durationMinutes: court.minDurationMinutes,
+        subtotal: Math.round(court.basePriceVnd * (court.minDurationMinutes / 60)),
       });
     }
 
-    const bookedItems = await this.fieldsRepository.findBookedItems(id, bookingDate);
+    const bookedItems = await this.courtsRepository.findBookedItems(id, bookingDate);
 
     const slots = generatedSlots.map((slot) => {
       const slotStart = this.timeStringToDate(slot.startTime);
@@ -325,7 +331,7 @@ export class FieldsService {
     });
 
     return {
-      fieldId: id,
+      courtId: id,
       date,
       slots,
     };
@@ -351,16 +357,5 @@ export class FieldsService {
     const hours = Math.floor(minutes / 60);
     const mins = minutes % 60;
     return new Date(Date.UTC(1970, 0, 1, hours, mins, 0, 0));
-  }
-
-  private async safeDeleteS3ByUrl(url: string) {
-    try {
-      const key = new URL(url).pathname.replace(/^\//, '');
-      if (key) {
-        await this.s3Service.delete(key);
-      }
-    } catch {
-      // ignore cleanup errors
-    }
   }
 }

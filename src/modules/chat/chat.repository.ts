@@ -16,7 +16,7 @@ export class ChatRepository {
       where: { id },
       include: {
         user: { select: { id: true, name: true, email: true, avatarUrl: true } },
-        venue: { select: { id: true, name: true, location: true } },
+        venue: { select: { id: true, name: true, address: true } },
       },
     });
   }
@@ -26,7 +26,7 @@ export class ChatRepository {
       data: { userId, venueId },
       include: {
         user: { select: { id: true, name: true, email: true, avatarUrl: true } },
-        venue: { select: { id: true, name: true, location: true } },
+        venue: { select: { id: true, name: true, address: true } },
       },
     });
   }
@@ -35,7 +35,7 @@ export class ChatRepository {
     return this.prisma.chatConversation.findMany({
       where: { userId },
       include: {
-        venue: { select: { id: true, name: true, location: true } },
+        venue: { select: { id: true, name: true, address: true } },
         messages: {
           take: 1,
           orderBy: { createdAt: 'desc' },
@@ -53,7 +53,7 @@ export class ChatRepository {
       where: { venueId: { in: venueIds } },
       include: {
         user: { select: { id: true, name: true, email: true, avatarUrl: true } },
-        venue: { select: { id: true, name: true, location: true } },
+        venue: { select: { id: true, name: true, address: true } },
         messages: {
           take: 1,
           orderBy: { createdAt: 'desc' },
@@ -70,7 +70,7 @@ export class ChatRepository {
     return this.prisma.chatConversation.findMany({
       include: {
         user: { select: { id: true, name: true, email: true, avatarUrl: true } },
-        venue: { select: { id: true, name: true, location: true } },
+        venue: { select: { id: true, name: true, address: true } },
         messages: {
           take: 1,
           orderBy: { createdAt: 'desc' },
@@ -83,18 +83,21 @@ export class ChatRepository {
     });
   }
 
-  findVenueOwnerUserIds(venueId: string) {
-    return this.prisma.venueOwner.findMany({
-      where: { venueId },
+  async findVenueOwnerUserIds(venueId: string) {
+    const venue = await this.prisma.venue.findUnique({
+      where: { id: venueId },
       select: { userId: true },
     });
+    if (!venue) return [];
+    return [{ userId: venue.userId }];
   }
 
-  findOwnedVenueIds(userId: string) {
-    return this.prisma.venueOwner.findMany({
+  async findOwnedVenueIds(userId: string) {
+    const venues = await this.prisma.venue.findMany({
       where: { userId },
-      select: { venueId: true },
+      select: { id: true },
     });
+    return venues.map((venue) => ({ venueId: venue.id }));
   }
 
   findVenueById(id: string) {

@@ -1,12 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import {
-  CACHE_KEYS,
-  CACHE_TTL,
-  POPULAR_SEARCH_LIMIT,
-  RECENTLY_VIEWED_LIMIT,
-  hashQuery,
-} from '@/common/cache/cache.constants';
+import { CACHE_KEYS, CACHE_TTL } from '@/common/cache/cache.constants';
 import { getPagination, toPaginatedResult } from '@/common/dto/pagination.dto';
 import { PrismaService } from '@/database/prisma.service';
 import { ElasticsearchService } from '@/infrastructure/elasticsearch/elasticsearch.service';
@@ -31,7 +25,7 @@ export class SearchService {
 
     await this.recordPopularSearch(keyword);
 
-    const cacheKey = CACHE_KEYS.searchVenues(hashQuery({ q: keyword, page, limit }));
+    const cacheKey = CACHE_KEYS.search(JSON.stringify({ q: keyword, page, limit }));
     const cached = await this.redis.getJson<any>(cacheKey);
     if (cached) {
       return cached;
@@ -46,7 +40,7 @@ export class SearchService {
       const venues = await this.prisma.venue.findMany({
         where: { id: { in: elasticResult.ids } },
         include: {
-          fields: {
+          courts: {
             where: { status: 'active' },
             include: { sport: true },
           },
@@ -61,9 +55,9 @@ export class SearchService {
       const where: Prisma.VenueWhereInput = {
         OR: [
           { name: { contains: keyword, mode: 'insensitive' } },
-          { location: { contains: keyword, mode: 'insensitive' } },
+          { address: { contains: keyword, mode: 'insensitive' } },
           { description: { contains: keyword, mode: 'insensitive' } },
-          { fields: { some: { name: { contains: keyword, mode: 'insensitive' } } } },
+          { courts: { some: { name: { contains: keyword, mode: 'insensitive' } } } },
         ],
       };
 
@@ -74,7 +68,7 @@ export class SearchService {
           take: limit,
           orderBy: [{ bookingCount: 'desc' }, { ratingAverage: 'desc' }],
           include: {
-            fields: {
+            courts: {
               where: { status: 'active' },
               include: { sport: true },
             },
@@ -89,13 +83,13 @@ export class SearchService {
     }
 
     const result = toPaginatedResult(data, total, page, limit);
-    await this.redis.setJson(cacheKey, result, CACHE_TTL.searchVenues);
+    await this.redis.setJson(cacheKey, result, CACHE_TTL.search);
     return result;
   }
 
-  async getPopularSearches(limit = POPULAR_SEARCH_LIMIT) {
+  async getPopularSearches(limit = 8) {
     const rows = await this.redis.zRevRange(CACHE_KEYS.searchPopular, 0, limit - 1);
-    const items: Array<{ query: string; count: number }> = [];
+    const items: { query: string; count: number }[] = [];
 
     for (let index = 0; index < rows.length; index += 2) {
       items.push({
@@ -122,17 +116,17 @@ export class SearchService {
     }
 
     const [popularMatches, venues] = await Promise.all([
-      this.getPopularSearches(POPULAR_SEARCH_LIMIT),
+      this.getPopularSearches(8),
       this.prisma.venue.findMany({
         where: {
           OR: [
             { name: { contains: normalized, mode: 'insensitive' } },
-            { location: { contains: normalized, mode: 'insensitive' } },
+            { address: { contains: normalized, mode: 'insensitive' } },
           ],
         },
         take: limit,
         orderBy: [{ bookingCount: 'desc' }, { viewCount: 'desc' }],
-        select: { id: true, name: true, location: true },
+        select: { id: true, name: true, address: true },
       }),
     ]);
 
@@ -145,7 +139,7 @@ export class SearchService {
         type: 'venue' as const,
         label: venue.name,
         venueId: venue.id,
-        location: venue.location,
+        address: venue.address,
       })),
     ].slice(0, limit);
 
@@ -162,14 +156,10 @@ export class SearchService {
       return;
     }
 
-    await this.redis.lRemPush(
-      CACHE_KEYS.recentlyViewed(userId),
-      venueId,
-      RECENTLY_VIEWED_LIMIT,
-    );
+    await this.redis.lRemPush(CACHE_KEYS.recentlyViewed(userId), venueId, 8);
   }
 
-  async getRecentlyViewed(userId: string, limit = RECENTLY_VIEWED_LIMIT) {
+  async getRecentlyViewed(userId: string, limit = 8) {
     const venueIds = await this.redis.lRange(CACHE_KEYS.recentlyViewed(userId), 0, limit - 1);
     if (venueIds.length === 0) {
       return [];
@@ -178,7 +168,7 @@ export class SearchService {
     const venues = await this.prisma.venue.findMany({
       where: { id: { in: venueIds } },
       include: {
-        fields: {
+        courts: {
           where: { status: 'active' },
           include: { sport: true },
         },
@@ -208,7 +198,7 @@ export class SearchService {
 
     const venues = await this.prisma.venue.findMany({
       include: {
-        fields: {
+        courts: {
           where: { status: 'active' },
           include: { sport: true },
         },
@@ -218,14 +208,14 @@ export class SearchService {
     await this.elasticsearch.ensureIndex();
 
     for (const venue of venues) {
-      const sports = [...new Set(venue.fields.map((field) => field.sport.name))];
+      const sports = [...new Set(venue.courts.map((court) => court.sport.name))];
       const minPrice =
-        venue.fields.length > 0 ? Math.min(...venue.fields.map((field) => field.price)) : 0;
+        venue.courts.length > 0 ? Math.min(...venue.courts.map((court) => court.basePriceVnd)) : 0;
 
       await this.elasticsearch.indexVenue({
         id: venue.id,
         name: venue.name,
-        location: venue.location,
+        location: venue.address,
         description: venue.description,
         sports,
         minPrice,

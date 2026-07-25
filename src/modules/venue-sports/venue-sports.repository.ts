@@ -13,7 +13,7 @@ export class VenueSportsRepository {
       take,
       include: {
         sport: true,
-        venue: { select: { id: true, name: true, location: true } },
+        venue: { select: { id: true, name: true, address: true } },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -28,7 +28,7 @@ export class VenueSportsRepository {
       where: { id },
       include: {
         sport: true,
-        venue: { select: { id: true, name: true, location: true } },
+        venue: { select: { id: true, name: true, address: true } },
       },
     });
   }
@@ -48,11 +48,11 @@ export class VenueSportsRepository {
   }
 
   async findOwnedVenueIds(userId: string) {
-    const ownerships = await this.prisma.venueOwner.findMany({
+    const venues = await this.prisma.venue.findMany({
       where: { userId },
-      select: { venueId: true },
+      select: { id: true },
     });
-    return ownerships.map((o) => o.venueId);
+    return venues.map((venue) => venue.id);
   }
 
   create(data: Prisma.VenueSportUncheckedCreateInput) {
@@ -60,7 +60,7 @@ export class VenueSportsRepository {
       data,
       include: {
         sport: true,
-        venue: { select: { id: true, name: true, location: true } },
+        venue: { select: { id: true, name: true, address: true } },
       },
     });
   }
@@ -71,7 +71,7 @@ export class VenueSportsRepository {
       data,
       include: {
         sport: true,
-        venue: { select: { id: true, name: true, location: true } },
+        venue: { select: { id: true, name: true, address: true } },
       },
     });
   }

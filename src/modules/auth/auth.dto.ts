@@ -51,3 +51,9 @@ export class RefreshDto {
   @IsNotEmpty()
   refreshToken: string;
 }
+
+export class VerifyEmailDto {
+  @IsString()
+  @IsNotEmpty()
+  token: string;
+}

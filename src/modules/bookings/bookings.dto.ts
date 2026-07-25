@@ -7,14 +7,13 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
-  Matches,
   ValidateNested,
 } from 'class-validator';
 
 export class CreateBookingItemDto {
   @IsString()
   @IsNotEmpty()
-  fieldId: string;
+  courtId: string;
 
   @IsDateString()
   date: string;
@@ -36,6 +35,16 @@ export class CreateBookingDto {
   @IsOptional()
   @IsString()
   note?: string;
+}
+
+export class CreateWalkInDto extends CreateBookingDto {
+  @IsString()
+  @IsNotEmpty()
+  customerName: string;
+
+  @IsString()
+  @IsNotEmpty()
+  customerPhone: string;
 }
 
 export class UpdateBookingStatusDto {

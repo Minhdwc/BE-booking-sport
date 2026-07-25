@@ -69,8 +69,8 @@ export class StatisticProcessor extends WorkerHost {
     }
 
     for (const item of payment.booking.items) {
-      await this.prisma.field.update({
-        where: { id: item.fieldId },
+      await this.prisma.court.update({
+        where: { id: item.courtId },
         data: { bookingCount: { increment: 1 } },
       });
     }

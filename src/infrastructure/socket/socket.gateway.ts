@@ -105,7 +105,7 @@ export class SocketGateway implements OnGatewayInit, OnGatewayConnection, OnGate
 
   sendBookingStatusUpdate(
     userId: string,
-    payload: { bookingId: string; status: string; fieldName: string },
+    payload: { bookingId: string; status: string; courtName: string },
   ) {
     this.server.to(`user:${userId}`).emit('booking-status', payload);
   }

@@ -2,8 +2,8 @@ import { IsIn, IsNotEmpty, IsString } from 'class-validator';
 
 export class PresignUploadDto {
   @IsString()
-  @IsIn(['avatars', 'venues', 'fields', 'payments'])
-  folder: 'avatars' | 'venues' | 'fields' | 'payments';
+  @IsIn(['avatars', 'venues', 'courts', 'payments'])
+  folder: 'avatars' | 'venues' | 'courts' | 'payments';
 
   @IsString()
   @IsNotEmpty()

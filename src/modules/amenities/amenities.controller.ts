@@ -40,21 +40,21 @@ export class AmenitiesController {
 
   @Post()
   @UseGuards(RolesGuard)
-  @Roles('admin', 'staff')
+  @Roles('admin', 'owner')
   create(@Body() dto: CreateAmenityDto) {
     return this.amenitiesService.create(dto);
   }
 
   @Patch(':id')
   @UseGuards(RolesGuard)
-  @Roles('admin', 'staff')
+  @Roles('admin', 'owner')
   update(@Param('id') id: string, @Body() dto: UpdateAmenityDto) {
     return this.amenitiesService.update(id, dto);
   }
 
   @Delete(':id')
   @UseGuards(RolesGuard)
-  @Roles('admin', 'staff')
+  @Roles('admin', 'owner')
   remove(@Param('id') id: string) {
     return this.amenitiesService.remove(id);
   }

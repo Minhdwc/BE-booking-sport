@@ -8,7 +8,7 @@ import { Prisma } from '@prisma/client';
 import { S3Service } from '@/infrastructure/aws/s3.service';
 import { QueueService } from '@/infrastructure/queue/queue.service';
 import { RedisService } from '@/infrastructure/redis/redis.service';
-import { CACHE_KEYS, CACHE_TTL, hashQuery } from '@/common/cache/cache.constants';
+import { CACHE_KEYS, CACHE_TTL } from '@/common/cache/cache.constants';
 import { getPagination, PaginationQueryDto, toPaginatedResult } from '@/common/dto/pagination.dto';
 import { JwtPayloadReturn } from '@/utils/jwt.util';
 import { DTOCreateVenue, DTOUpdateVenue } from './venues.dto';
@@ -27,21 +27,24 @@ export class VenuesService {
     const { page, limit, skip } = getPagination(query);
     const where: Prisma.VenueWhereInput = {};
 
-    if (user && user.role === 'staff') {
-      where.venueOwners = { some: { userId: user.id } };
+    if (user && user.role === 'owner') {
+      const ownedVenueIds = await this.venuesRepository.findOwnedVenueIds(user.id);
+      where.id = ownedVenueIds.length > 0 ? { in: ownedVenueIds } : { in: [] };
     }
 
     const search = query.search?.trim();
     if (search) {
       where.OR = [
         { name: { contains: search, mode: 'insensitive' } },
-        { location: { contains: search, mode: 'insensitive' } },
-        { fields: { some: { name: { contains: search, mode: 'insensitive' } } } },
+        { address: { contains: search, mode: 'insensitive' } },
+        { district: { contains: search, mode: 'insensitive' } },
+        { city: { contains: search, mode: 'insensitive' } },
+        { courts: { some: { name: { contains: search, mode: 'insensitive' } } } },
       ];
     }
 
     const cacheKey = CACHE_KEYS.venueList(
-      hashQuery({
+      JSON.stringify({
         page,
         limit,
         search: query.search ?? '',
@@ -86,7 +89,7 @@ export class VenuesService {
   }
 
   private async invalidateVenueCache(id?: string) {
-    await this.redis.invalidatePattern(CACHE_KEYS.venueListPattern);
+    await this.redis.invalidatePattern(CACHE_KEYS.venueList('*'));
     if (id) {
       await this.redis.del(CACHE_KEYS.venueDetail(id));
       await this.redis.invalidatePattern('cache:search:venues:*');
@@ -97,25 +100,18 @@ export class VenuesService {
     return this.venuesRepository.findByOwnerId(ownerId);
   }
 
-  async create(payload: DTOCreateVenue) {
-    if (payload.ownerId) {
-      const owner = await this.venuesRepository.findUserById(payload.ownerId);
-      if (!owner) {
-        throw new NotFoundException('Tài khoản không tồn tại');
-      }
-    }
+  async create(payload: DTOCreateVenue, user: JwtPayloadReturn) {
 
     const venue = await this.venuesRepository.create({
       name: payload.name,
-      location: payload.location,
+      address: payload.address,
+      district: payload.district,
+      city: payload.city,
+      phone: payload.phone,
       longitude: payload.longitude,
       latitude: payload.latitude,
-      openTime: payload.openTime,
-      closeTime: payload.closeTime,
-      restStartTime: payload.restStartTime,
-      restEndTime: payload.restEndTime,
       description: payload.description,
-      ownerId: payload.ownerId,
+      userId: user.id,
     });
 
     await this.invalidateVenueCache();
@@ -124,9 +120,9 @@ export class VenuesService {
   }
 
   async update(id: string, user: JwtPayloadReturn, data: DTOUpdateVenue) {
-    if (user.role === 'staff') {
-      const ownerships = await this.venuesRepository.findOwnedVenueIds(user.id);
-      if (!ownerships.some((o) => o.venueId === id)) {
+    if (user.role === 'owner') {
+      const ownedVenueIds = await this.venuesRepository.findOwnedVenueIds(user.id);
+      if (!ownedVenueIds.includes(id)) {
         throw new ForbiddenException('Bạn không có quyền quản lý sân vận động này');
       }
     } else if (user.role !== 'admin') {
@@ -145,9 +141,9 @@ export class VenuesService {
   }
 
   async remove(id: string, user: JwtPayloadReturn) {
-    if (user.role === 'staff') {
-      const ownerships = await this.venuesRepository.findOwnedVenueIds(user.id);
-      if (!ownerships.some((o) => o.venueId === id)) {
+    if (user.role === 'owner') {
+      const ownedVenueIds = await this.venuesRepository.findOwnedVenueIds(user.id);
+      if (!ownedVenueIds.includes(id)) {
         throw new ForbiddenException('Bạn không có quyền quản lý sân vận động này');
       }
     } else if (user.role !== 'admin') {
@@ -177,9 +173,9 @@ export class VenuesService {
       throw new BadRequestException('File không tồn tại');
     }
 
-    if (user.role === 'staff') {
-      const ownerships = await this.venuesRepository.findOwnedVenueIds(user.id);
-      if (!ownerships.some((o) => o.venueId === id)) {
+    if (user.role === 'owner') {
+      const ownedVenueIds = await this.venuesRepository.findOwnedVenueIds(user.id);
+      if (!ownedVenueIds.includes(id)) {
         throw new ForbiddenException('Bạn không có quyền quản lý sân vận động này');
       }
     } else if (user.role !== 'admin') {
@@ -207,9 +203,9 @@ export class VenuesService {
   }
 
   async removeImage(venueId: string, imageId: string, user: JwtPayloadReturn) {
-    if (user.role === 'staff') {
-      const ownerships = await this.venuesRepository.findOwnedVenueIds(user.id);
-      if (!ownerships.some((o) => o.venueId === venueId)) {
+    if (user.role === 'owner') {
+      const ownedVenueIds = await this.venuesRepository.findOwnedVenueIds(user.id);
+      if (!ownedVenueIds.includes(venueId)) {
         throw new ForbiddenException('Bạn không có quyền quản lý sân vận động này');
       }
     } else if (user.role !== 'admin') {
@@ -241,28 +237,10 @@ export class VenuesService {
 
   async listOwners(venueId: string) {
     await this.findOne(venueId);
-    return this.venuesRepository.listOwners(venueId);
-  }
-
-  async addOwner(venueId: string, userId: string) {
-    await this.findOne(venueId);
-
-    const user = await this.venuesRepository.findUserById(userId);
-    if (!user) {
-      throw new NotFoundException('User không tồn tại');
+    const venue = await this.venuesRepository.findById(venueId);
+    if (!venue?.user) {
+      return [];
     }
-
-    return this.venuesRepository.upsertOwner(venueId, userId);
-  }
-
-  async removeOwner(venueId: string, userId: string) {
-    await this.findOne(venueId);
-
-    const ownership = await this.venuesRepository.findOwner(venueId, userId);
-    if (!ownership) {
-      throw new NotFoundException('VenueOwner không tồn tại');
-    }
-
-    return this.venuesRepository.deleteOwner(ownership.id);
+    return [{ user: venue.user }];
   }
 }

@@ -19,7 +19,7 @@ import { Roles } from '@/common/decorators/roles.decorator';
 import { PaginationQueryDto } from '@/common/dto/pagination.dto';
 import { RolesGuard } from '@/common/guards';
 import { JwtPayloadReturn } from '@/utils/jwt.util';
-import { DTOAddVenueOwner, DTOCreateVenue, DTOUpdateVenue } from './venues.dto';
+import { DTOCreateVenue, DTOUpdateVenue } from './venues.dto';
 import { VenuesService } from './venues.service';
 import { SearchService } from '@/modules/search/search.service';
 
@@ -55,17 +55,14 @@ export class VenuesController {
 
   @Post()
   @UseGuards(RolesGuard)
-  @Roles('admin', 'staff')
+  @Roles('admin', 'owner')
   create(@Body() bodyPayload: DTOCreateVenue, @CurrentUser() user: JwtPayloadReturn) {
-    return this.venuesService.create({
-      ...bodyPayload,
-      ownerId: bodyPayload.ownerId || user.id,
-    });
+    return this.venuesService.create(bodyPayload, user);
   }
 
   @Post(':id/images')
   @UseGuards(RolesGuard)
-  @Roles('admin', 'staff')
+  @Roles('admin', 'owner')
   @UseInterceptors(
     FileInterceptor('file', {
       storage: memoryStorage(),
@@ -80,16 +77,9 @@ export class VenuesController {
     return this.venuesService.uploadImage(id, user, file);
   }
 
-  @Post(':id/owners')
-  @UseGuards(RolesGuard)
-  @Roles('admin')
-  addOwner(@Param('id') id: string, @Body() bodyPayload: DTOAddVenueOwner) {
-    return this.venuesService.addOwner(id, bodyPayload.userId);
-  }
-
   @Patch(':id')
   @UseGuards(RolesGuard)
-  @Roles('admin', 'staff')
+  @Roles('admin', 'owner')
   update(
     @Param('id') id: string,
     @Body() bodyPayload: DTOUpdateVenue,
@@ -100,7 +90,7 @@ export class VenuesController {
 
   @Delete(':id/images/:imageId')
   @UseGuards(RolesGuard)
-  @Roles('admin', 'staff')
+  @Roles('admin', 'owner')
   removeImage(
     @Param('id') id: string,
     @Param('imageId') imageId: string,
@@ -109,16 +99,9 @@ export class VenuesController {
     return this.venuesService.removeImage(id, imageId, user);
   }
 
-  @Delete(':id/owners/:userId')
-  @UseGuards(RolesGuard)
-  @Roles('admin')
-  removeOwner(@Param('id') id: string, @Param('userId') userId: string) {
-    return this.venuesService.removeOwner(id, userId);
-  }
-
   @Delete(':id')
   @UseGuards(RolesGuard)
-  @Roles('admin', 'staff')
+  @Roles('admin', 'owner')
   remove(@Param('id') id: string, @CurrentUser() user: JwtPayloadReturn) {
     return this.venuesService.remove(id, user);
   }

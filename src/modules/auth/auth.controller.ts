@@ -1,7 +1,9 @@
 import { Body, Controller, Post } from '@nestjs/common';
 import { Public } from '@/common/decorators/public.decorator';
+import { CurrentUser } from '@/common/decorators/current-user.decorator';
+import { JwtPayloadReturn } from '@/utils/jwt.util';
 import { AuthService } from './auth.service';
-import { LoginDto, RefreshDto, RegisterDto } from './auth.dto';
+import { LoginDto, RefreshDto, RegisterDto, VerifyEmailDto } from './auth.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -35,5 +37,16 @@ export class AuthController {
   @Post('logout')
   logout() {
     return { success: true };
+  }
+
+  @Public()
+  @Post('verify-email')
+  verifyEmail(@Body() verifyEmailDto: VerifyEmailDto) {
+    return this.authService.verifyEmail(verifyEmailDto.token);
+  }
+
+  @Post('resend-verify')
+  resendVerifyEmail(@CurrentUser() user: JwtPayloadReturn) {
+    return this.authService.resendVerifyEmail(user.id);
   }
 }

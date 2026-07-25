@@ -30,7 +30,7 @@ export class UploadsService {
       throw new BadRequestException('Chỉ chấp nhận file ảnh JPEG, PNG hoặc WebP');
     }
 
-    if (!['avatars', 'venues', 'fields', 'payments'].includes(folder)) {
+    if (!['avatars', 'venues', 'courts', 'payments'].includes(folder)) {
       throw new BadRequestException('Thư mục upload không hợp lệ');
     }
 
@@ -38,7 +38,7 @@ export class UploadsService {
       throw new ForbiddenException('Bạn chỉ được upload ảnh đại diện');
     }
 
-    if (user.role === 'staff' && !['avatars', 'venues', 'fields', 'payments'].includes(folder)) {
+    if (user.role === 'owner' && !['avatars', 'venues', 'courts', 'payments'].includes(folder)) {
       throw new ForbiddenException('Thư mục upload không hợp lệ');
     }
 

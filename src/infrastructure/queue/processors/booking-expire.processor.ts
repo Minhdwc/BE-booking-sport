@@ -49,16 +49,16 @@ export class BookingExpireProcessor extends WorkerHost {
         user: { select: { id: true, name: true, email: true } },
         items: {
           include: {
-            field: { include: { venue: true } },
+            court: { include: { venue: true } },
           },
         },
       },
     });
 
     const firstItem = updated.items[0];
-    const dateStr = firstItem?.date.toISOString().split('T')[0] ?? '';
+    const dateStr = firstItem?.date.toISOString().split('T')[0];
     const title = 'Hết hạn giữ chỗ';
-    const message = `Hết hạn giữ chỗ, booking ${updated.bookingCode} (${firstItem?.field.name ?? 'Sân'} tại ${firstItem?.field.venue.name ?? 'cơ sở'} ngày ${dateStr}) đã được nhả`;
+    const message = `Hết hạn giữ chỗ, booking ${updated.bookingCode} (${firstItem?.court.name} tại ${firstItem?.court.venue.name} ngày ${dateStr}) đã được nhả`;
 
     await this.prisma.auditLog.create({
       data: {
@@ -78,14 +78,14 @@ export class BookingExpireProcessor extends WorkerHost {
     });
 
     const venueIds = [...new Set(updated.items.map((item) => item.venueId))];
-    const owners = await this.prisma.venueOwner.findMany({
-      where: { venueId: { in: venueIds } },
-      select: { userId: true },
+    const venues = await this.prisma.venue.findMany({
+      where: { id: { in: venueIds } },
+      select: { id: true, userId: true },
     });
 
     await Promise.all(
-      owners.map((owner) =>
-        this.queueService.createNotification(owner.userId, title, message, {
+      venues.map((venue) =>
+        this.queueService.createNotification(venue.userId, title, message, {
           type: 'booking',
           payload: { bookingId: updated.id, status: updated.status },
         }),
@@ -95,15 +95,15 @@ export class BookingExpireProcessor extends WorkerHost {
     this.socketGateway.sendBookingStatusUpdate(updated.userId, {
       bookingId: updated.id,
       status: updated.status,
-      fieldName: firstItem?.field.name ?? 'Sân',
+      courtName: firstItem?.court.name,
     });
 
     for (const item of updated.items) {
       this.socketGateway.broadcastToVenue(item.venueId, 'booking:updated', {
         bookingId: updated.id,
         status: updated.status,
-        fieldId: item.fieldId,
-        fieldName: item.field.name,
+        courtId: item.courtId,
+        courtName: item.court.name,
         date: item.date.toISOString().split('T')[0],
       });
     }

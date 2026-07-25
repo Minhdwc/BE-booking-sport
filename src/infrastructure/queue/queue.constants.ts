@@ -14,6 +14,7 @@ export const EMAIL_JOBS = {
   PAYMENT_CONFIRMATION: 'payment-confirmation',
   NEW_BOOKING_OWNER: 'new-booking-owner',
   WELCOME: 'welcome',
+  VERIFY_EMAIL: 'verify-email',
 } as const;
 
 export const NOTIFICATION_JOBS = {

@@ -108,12 +108,8 @@ export class ReviewsService {
 
   async remove(id: string, user: JwtPayloadReturn) {
     const review = await this.findOne(id);
-
-    const canModerate =
-      user.role === 'admin' || user.role === 'staff' || review.userId === user.id;
-
-    if (!canModerate) {
-      throw new ForbiddenException('Bạn không có quyền xóa review này');
+    if (review.userId !== user.id) {
+      throw new ForbiddenException('Bạn chỉ được xóa review của mình');
     }
 
     const deleted = await this.reviewsRepository.delete(id);

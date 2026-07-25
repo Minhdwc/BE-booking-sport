@@ -45,14 +45,15 @@ export class AnalyticsRepository {
   findVenuesByIds(ids: string[]) {
     return this.prisma.venue.findMany({
       where: { id: { in: ids } },
-      select: { id: true, name: true, location: true, bookingCount: true, viewCount: true },
+      select: { id: true, name: true, address: true, bookingCount: true, viewCount: true },
     });
   }
 
-  findOwnedVenueIds(userId: string) {
-    return this.prisma.venueOwner.findMany({
+  async findOwnedVenueIds(userId: string) {
+    const venues = await this.prisma.venue.findMany({
       where: { userId },
-      select: { venueId: true },
+      select: { id: true },
     });
+    return venues.map((venue) => venue.id);
   }
 }
