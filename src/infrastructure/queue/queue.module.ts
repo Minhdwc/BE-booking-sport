@@ -10,6 +10,7 @@ import { ImageProcessor } from './processors/image.processor';
 import { NotificationProcessor } from './processors/notification.processor';
 import { PaymentProcessor } from './processors/payment.processor';
 import { StatisticProcessor } from './processors/statistic.processor';
+import { getRedisOptions } from '@/infrastructure/redis/redis.config';
 import { QUEUE_NAMES } from './queue.constants';
 import { QueueService } from './queue.service';
 
@@ -19,11 +20,7 @@ import { QueueService } from './queue.service';
     BullModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
-        connection: {
-          host: config.get<string>('REDIS_HOST', 'localhost'),
-          port: config.get<number>('REDIS_PORT', 6379),
-          password: config.get<string>('REDIS_PASSWORD') || undefined,
-        },
+        connection: getRedisOptions(config),
       }),
     }),
     BullModule.registerQueue(
