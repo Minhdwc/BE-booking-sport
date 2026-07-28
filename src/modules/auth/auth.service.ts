@@ -185,4 +185,12 @@ export class AuthService {
 
     return { success: true, message: 'Email xác minh đã được gửi lại' };
   }
+
+  async getMe(userId: string) {
+    const user = await this.authRepository.findById(userId);
+    if (!user) {
+      throw new NotFoundException('Không tìm thấy user');
+    }
+    return user;
+  }
 }

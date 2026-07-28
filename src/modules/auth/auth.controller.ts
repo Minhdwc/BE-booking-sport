@@ -1,4 +1,4 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { Body, Controller, Post, Get } from '@nestjs/common';
 import { Public } from '@/common/decorators/public.decorator';
 import { CurrentUser } from '@/common/decorators/current-user.decorator';
 import { JwtPayloadReturn } from '@/utils/jwt.util';
@@ -48,5 +48,10 @@ export class AuthController {
   @Post('resend-verify')
   resendVerifyEmail(@CurrentUser() user: JwtPayloadReturn) {
     return this.authService.resendVerifyEmail(user.id);
+  }
+
+  @Get('me')
+  getMe(@CurrentUser() user: JwtPayloadReturn) {
+    return this.authService.getMe(user.id);
   }
 }
