@@ -9,6 +9,7 @@ import {
 import { Prisma } from '@prisma/client';
 import { QueueService } from '@/infrastructure/queue/queue.service';
 import { SocketGateway } from '@/infrastructure/socket/socket.gateway';
+import { PrismaService } from '@/database/prisma.service';
 import { getPagination, PaginationQueryDto, toPaginatedResult } from '@/common/dto/pagination.dto';
 import { JwtPayloadReturn } from '@/utils/jwt.util';
 import {
@@ -25,6 +26,7 @@ const BOOKING_CANCEL_HOURS_BEFORE = 8;
 export class BookingsService {
   constructor(
     private readonly bookingsRepository: BookingsRepository,
+    private readonly prisma: PrismaService,
     private readonly queueService: QueueService,
     private readonly socketGateway: SocketGateway,
   ) {}
@@ -190,18 +192,93 @@ export class BookingsService {
     const totalAmount = preparedItems.reduce((sum, item) => sum + item.subtotal, 0);
     const discountAmount = 0;
     const finalAmount = totalAmount - discountAmount;
+    const bookingItems = preparedItems.map(({ courtName, venueName, venueIdForNotify, ...item }) => item);
 
-    const booking = await this.bookingsRepository.createWalkIn({
-      userId: user.id,
-      customerName: dto.customerName.trim(),
-      customerPhone: dto.customerPhone.trim(),
-      bookingCode: `WI${Date.now().toString(36).toUpperCase()}${Math.random().toString(36).slice(2, 6).toUpperCase()}`,
-      totalAmount,
-      discountAmount,
-      finalAmount,
-      note: dto.note,
-      items: preparedItems.map(({ courtName, venueName, venueIdForNotify, ...item }) => item),
+    const bookingId = await this.prisma.$transaction(async (tx) => {
+      for (const courtId of [...new Set(bookingItems.map((item) => item.courtId))]) {
+        await tx.court.update({
+          where: { id: courtId },
+          data: { updatedAt: new Date() },
+        });
+      }
+
+      for (const item of bookingItems) {
+        const existingItems = await tx.bookingItem.findMany({
+          where: {
+            courtId: item.courtId,
+            date: item.date,
+            status: 'active',
+            booking: {
+              status: { in: ['waiting_payment', 'confirmed', 'completed', 'paid_at_venue'] },
+            },
+          },
+          select: { startTime: true, endTime: true },
+        });
+
+        if (
+          existingItems.some(
+            (existing) =>
+              existing.startTime.getTime() < item.endTime.getTime() &&
+              existing.endTime.getTime() > item.startTime.getTime(),
+          )
+        ) {
+          throw new ConflictException(
+            `Khung giờ ${item.startTime.toISOString().slice(11, 16)}–${item.endTime.toISOString().slice(11, 16)} đã được đặt`,
+          );
+        }
+      }
+
+      const created = await tx.booking.create({
+        data: {
+          userId: user.id,
+          customerName: dto.customerName.trim(),
+          customerPhone: dto.customerPhone.trim(),
+          bookingCode: `WI${Date.now().toString(36).toUpperCase()}${Math.random().toString(36).slice(2, 6).toUpperCase()}`,
+          status: 'paid_at_venue',
+          totalAmount,
+          discountAmount,
+          finalAmount,
+          note: dto.note,
+          expiresAt: null,
+          items: {
+            create: bookingItems.map((item) => {
+              const startAt = new Date(item.date);
+              startAt.setUTCHours(item.startTime.getUTCHours(), item.startTime.getUTCMinutes(), 0, 0);
+              const endAt = new Date(item.date);
+              endAt.setUTCHours(item.endTime.getUTCHours(), item.endTime.getUTCMinutes(), 0, 0);
+
+              return {
+                courtId: item.courtId,
+                venueId: item.venueId,
+                date: item.date,
+                startTime: item.startTime,
+                endTime: item.endTime,
+                startAt,
+                endAt,
+                durationMinutes: item.durationMinutes,
+                pricePerHour: item.pricePerHour,
+                subtotal: item.subtotal,
+              };
+            }),
+          },
+        },
+        select: { id: true },
+      });
+
+      await tx.payment.create({
+        data: {
+          bookingId: created.id,
+          amount: finalAmount,
+          gateway: 'paid_at_venue',
+          status: 'success',
+          paidAt: new Date(),
+        },
+      });
+
+      return created.id;
     });
+
+    const booking = await this.bookingsRepository.findById(bookingId);
 
     if (!booking) {
       throw new BadRequestException('Không thể tạo booking walk-in');

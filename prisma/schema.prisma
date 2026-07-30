@@ -220,6 +220,8 @@ model BookingItem {
   date            DateTime @db.Date
   startTime       DateTime @map("start_time") @db.Time(6)
   endTime         DateTime @map("end_time") @db.Time(6)
+  startAt         DateTime @map("start_at")
+  endAt           DateTime @map("end_at")
   durationMinutes Int      @map("duration_minutes")
   pricePerHour    Int      @map("price_per_hour")
   subtotal        Int
