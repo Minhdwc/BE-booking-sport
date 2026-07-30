@@ -146,7 +146,7 @@ export class PaymentsRepository {
   setMethod(id: string, method: string) {
     return this.prisma.payment.update({
       where: { id },
-      data: { method },
+      data: { gateway: method },
     });
   }
 
@@ -176,8 +176,7 @@ export class PaymentsRepository {
         status: 'success',
         transactionCode,
         paidAt: new Date(),
-        gateway: 'vnpay',
-        method: method,
+        gateway: method ?? 'vnpay',
         ...(gatewayResponse && { gatewayResponse }),
       },
       include: {

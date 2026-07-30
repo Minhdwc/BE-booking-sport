@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '@/database/prisma.service';
+
 @Injectable()
 export class BookingsRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -130,7 +131,30 @@ export class BookingsRepository {
           note: data.note,
           expiresAt: null,
           items: {
-            create: data.items,
+            create: data.items.map((item) => {
+              const startAt = new Date(item.date);
+              startAt.setUTCHours(
+                item.startTime.getUTCHours(),
+                item.startTime.getUTCMinutes(),
+                0,
+                0,
+              );
+              const endAt = new Date(item.date);
+              endAt.setUTCHours(item.endTime.getUTCHours(), item.endTime.getUTCMinutes(), 0, 0);
+
+              return {
+                courtId: item.courtId,
+                venueId: item.venueId,
+                date: item.date,
+                startTime: item.startTime,
+                endTime: item.endTime,
+                startAt,
+                endAt,
+                durationMinutes: item.durationMinutes,
+                pricePerHour: item.pricePerHour,
+                subtotal: item.subtotal,
+              };
+            }),
           },
         },
         include: {
@@ -151,7 +175,7 @@ export class BookingsRepository {
         data: {
           bookingId: booking.id,
           amount: data.finalAmount,
-          method: 'paid_at_venue',
+          gateway: 'paid_at_venue',
           status: 'success',
           paidAt: new Date(),
         },
@@ -206,7 +230,30 @@ export class BookingsRepository {
         note: data.note,
         expiresAt: data.expiresAt,
         items: {
-          create: data.items,
+          create: data.items.map((item) => {
+            const startAt = new Date(item.date);
+            startAt.setUTCHours(
+              item.startTime.getUTCHours(),
+              item.startTime.getUTCMinutes(),
+              0,
+              0,
+            );
+            const endAt = new Date(item.date);
+            endAt.setUTCHours(item.endTime.getUTCHours(), item.endTime.getUTCMinutes(), 0, 0);
+
+            return {
+              courtId: item.courtId,
+              venueId: item.venueId,
+              date: item.date,
+              startTime: item.startTime,
+              endTime: item.endTime,
+              startAt,
+              endAt,
+              durationMinutes: item.durationMinutes,
+              pricePerHour: item.pricePerHour,
+              subtotal: item.subtotal,
+            };
+          }),
         },
       },
       include: {
@@ -258,7 +305,10 @@ export class BookingsRepository {
             select: { id: true, name: true, email: true, phone: true },
           },
           items: {
-            include: { court: { include: { sport: true, venue: true } }, venue: true },
+            include: {
+              court: { include: { sport: true, venue: true } },
+              venue: true,
+            },
           },
           payments: true,
         },
@@ -281,7 +331,10 @@ export class BookingsRepository {
             select: { id: true, name: true, email: true, phone: true },
           },
           items: {
-            include: { court: { include: { sport: true, venue: true } }, venue: true },
+            include: {
+              court: { include: { sport: true, venue: true } },
+              venue: true,
+            },
           },
           payments: true,
         },

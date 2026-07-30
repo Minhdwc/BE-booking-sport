@@ -112,7 +112,7 @@ export class PaymentsService {
     return this.paymentsRepository.create({
       bookingId: dto.bookingId,
       amount: booking.finalAmount,
-      method,
+      gateway: method,
       status: user.role === 'user' ? 'pending' : dto.status,
       venuePaymentAccountId: dto.venuePaymentAccountId,
     });
@@ -151,7 +151,7 @@ export class PaymentsService {
     return this.paymentsRepository.create({
       bookingId,
       amount: booking.finalAmount,
-      method: 'vnpay',
+      gateway: 'vnpay',
       status: 'pending',
     });
   }
@@ -178,7 +178,7 @@ export class PaymentsService {
 
     const payment = await this.paymentsRepository.update(id, {
       ...(data.bookingId && { bookingId: data.bookingId }),
-      ...(methodFromAccount && { method: methodFromAccount }),
+      ...(methodFromAccount && { gateway: methodFromAccount }),
       ...(data.status && { status: data.status }),
       ...(data.venuePaymentAccountId && { venuePaymentAccountId: data.venuePaymentAccountId }),
       ...(data.transactionCode && { transactionCode: data.transactionCode }),
@@ -299,13 +299,13 @@ export class PaymentsService {
     this.socketGateway.sendBookingStatusUpdate(user.id, {
       bookingId: updated.bookingId,
       status: 'confirmed',
-      courtName: updated.booking.items[0]?.court.name,
+      courtName: updated.booking?.items[0]?.court.name,
     });
 
     return {
       paymentId: updated.id,
       status: updated.status,
-      method: updated.method,
+      method: updated.gateway,
       transactionCode: updated.transactionCode,
     };
   }
@@ -409,12 +409,17 @@ export class PaymentsService {
     const existing = await this.paymentsRepository.findById(paymentId);
     const oldStatus = existing?.status;
 
-    const payment = await this.paymentsRepository.markSuccess(
+    await this.paymentsRepository.markSuccess(
       paymentId,
       transactionCode,
       gatewayResponse,
       method,
     );
+
+    const payment = await this.paymentsRepository.findById(paymentId);
+    if (!payment) {
+      throw new NotFoundException('Payment không tồn tại');
+    }
 
     await this.paymentsRepository.confirmBooking(payment.bookingId);
     await this.queueService.cancelBookingExpiry(payment.bookingId);

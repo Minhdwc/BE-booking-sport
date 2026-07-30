@@ -1,10 +1,4 @@
-import {
-  Body,
-  Controller,
-  Get,
-  Param,
-  Post,
-} from '@nestjs/common';
+import { Body, Controller, Get, Param, Post } from '@nestjs/common';
 import { CurrentUser } from '@/common/decorators/current-user.decorator';
 import { JwtPayloadReturn } from '@/utils/jwt.util';
 import { ChatService } from './chat.service';
@@ -20,10 +14,7 @@ export class ChatController {
   }
 
   @Post('conversations')
-  startConversation(
-    @CurrentUser() user: JwtPayloadReturn,
-    @Body() dto: CreateChatConversationDto,
-  ) {
+  startConversation(@CurrentUser() user: JwtPayloadReturn, @Body() dto: CreateChatConversationDto) {
     return this.chatService.startConversation(user, dto.venueId);
   }
 

@@ -101,9 +101,7 @@ export class AnalyticsService {
     };
   }
 
-  private calcSuccessRate(
-    rows: Array<{ status: string; _count: { _all: number } }>,
-  ) {
+  private calcSuccessRate(rows: Array<{ status: string; _count: { _all: number } }>) {
     const total = rows.reduce((sum, row) => sum + row._count._all, 0);
     const success = rows.find((row) => row.status === 'success')?._count._all ?? 0;
     return total > 0 ? Number(((success / total) * 100).toFixed(1)) : 0;

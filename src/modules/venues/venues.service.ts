@@ -101,7 +101,6 @@ export class VenuesService {
   }
 
   async create(payload: DTOCreateVenue, user: JwtPayloadReturn) {
-
     const venue = await this.venuesRepository.create({
       name: payload.name,
       address: payload.address,
