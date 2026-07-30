@@ -27,7 +27,12 @@ async function bootstrap() {
   });
 
   app.enableCors({
-    origin: ['http://localhost:3000', 'http://localhost:3002/'],
+    origin: [
+      'http://localhost:3000',
+      'http://localhost:3002',
+      'https://public-user-booking-fe.vercel.app',
+      'https://website-booking-fe-erp.vercel.app',
+    ],
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
