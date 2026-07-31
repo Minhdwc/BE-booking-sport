@@ -69,8 +69,10 @@ export class PaymentsController {
       (typeof forwarded === 'string' ? forwarded.split(',')[0]?.trim() : undefined) ||
       req.ip ||
       '127.0.0.1';
+    const platformHeader = req.headers['x-client-platform'];
+    const platform = typeof platformHeader === 'string' ? platformHeader : undefined;
 
-    return this.paymentsService.createVnpayUrl(id, user, ipAddr);
+    return this.paymentsService.createVnpayUrl(id, user, ipAddr, platform);
   }
 
   @Post(':id/pay-with-saved-method')

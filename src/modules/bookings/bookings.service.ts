@@ -11,6 +11,7 @@ import { QueueService } from '@/infrastructure/queue/queue.service';
 import { SocketGateway } from '@/infrastructure/socket/socket.gateway';
 import { PrismaService } from '@/database/prisma.service';
 import { getPagination, PaginationQueryDto, toPaginatedResult } from '@/common/dto/pagination.dto';
+import { isDateBeforeTodayVn, isSlotStartInPast } from '@/common/utils/booking-time.util';
 import { JwtPayloadReturn } from '@/utils/jwt.util';
 import {
   CreateBookingDto,
@@ -346,12 +347,14 @@ export class BookingsService {
         throw new BadRequestException('Ngày đặt sân không hợp lệ');
       }
 
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const bookingDay = new Date(bookingDate);
-      bookingDay.setHours(0, 0, 0, 0);
-      if (bookingDay < today) {
-        throw new BadRequestException('Ngày đặt sân phải lớn hơn hiện tại');
+      if (isDateBeforeTodayVn(item.date)) {
+        throw new BadRequestException('Không thể đặt sân cho ngày đã qua');
+      }
+
+      if (isSlotStartInPast(item.date, item.startTime)) {
+        throw new BadRequestException(
+          `Khung giờ ${item.startTime}–${item.endTime} đã qua, không thể đặt`,
+        );
       }
 
       const court = await this.bookingsRepository.findCourtById(item.courtId);

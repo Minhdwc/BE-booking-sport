@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { getPagination, toPaginatedResult } from '@/common/dto/pagination.dto';
+import { isSlotStartInPast } from '@/common/utils/booking-time.util';
 import { S3Service } from '@/infrastructure/aws/s3.service';
 import { QueueService } from '@/infrastructure/queue/queue.service';
 import { RedisService } from '@/infrastructure/redis/redis.service';
@@ -328,13 +329,14 @@ export class CourtsService {
           booked.startTime.getTime() < slotEnd.getTime() &&
           booked.endTime.getTime() > slotStart.getTime(),
       );
+      const isPast = isSlotStartInPast(date, slot.startTime);
 
       return {
         startTime: `${slot.startTime}:00`,
         endTime: `${slot.endTime}:00`,
         durationMinutes: slot.durationMinutes,
         subtotal: slot.subtotal,
-        status: isBooked ? 'booked' : 'available',
+        status: isBooked ? 'booked' : isPast ? 'past' : 'available',
       };
     });
 

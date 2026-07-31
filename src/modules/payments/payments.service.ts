@@ -214,7 +214,12 @@ export class PaymentsService {
     return this.paymentsRepository.delete(id);
   }
 
-  async createVnpayUrl(paymentId: string, user: JwtPayloadReturn, ipAddr: string) {
+  async createVnpayUrl(
+    paymentId: string,
+    user: JwtPayloadReturn,
+    ipAddr: string,
+    platform?: string,
+  ) {
     const payment = await this.findOne(paymentId, user);
 
     if (payment.status === 'success') {
@@ -233,11 +238,18 @@ export class PaymentsService {
 
     await this.paymentsRepository.incrementRetryCount(paymentId);
 
+    const defaultReturnUrl = process.env.VNPAY_RETURN_URL || 'http://localhost:3001/api/v1/payments/vnpay-return';
+    const returnUrl =
+      platform === 'mobile'
+        ? `${defaultReturnUrl}${defaultReturnUrl.includes('?') ? '&' : '?'}platform=mobile`
+        : undefined;
+
     const paymentUrl = this.paymentGateway.createPaymentUrl({
       amount: payment.amount,
       bookingId: payment.id,
       orderInfo: `Thanh toan dat san ${payment.bookingId.slice(0, 8)}`,
       ipAddr,
+      returnUrl,
     });
 
     return { paymentUrl };
@@ -312,29 +324,43 @@ export class PaymentsService {
 
   async handleVnpayReturn(query: Record<string, string>, res: Response) {
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
-    const vnpayQuery = query as VnpayReturnParams;
+    const mobileReturnBase =
+      process.env.MOBILE_PAYMENT_RETURN_URL || 'bookingfield://payment-return';
+    const isMobileReturn = query.platform === 'mobile';
+
+    const { platform: _platform, ...vnpayQueryInput } = query;
+    const vnpayQuery = vnpayQueryInput as VnpayReturnParams;
     const { isValid, isSuccess } = this.paymentGateway.verifyReturnUrl(vnpayQuery);
 
+    const buildRedirect = (params: Record<string, string>) => {
+      const search = new URLSearchParams(params).toString();
+      if (isMobileReturn) {
+        const separator = mobileReturnBase.includes('?') ? '&' : '?';
+        return `${mobileReturnBase}${separator}${search}`;
+      }
+      return `${frontendUrl}/payments?${search}`;
+    };
+
     if (!isValid) {
-      return res.redirect(`${frontendUrl}/payments?status=invalid`);
+      return res.redirect(buildRedirect({ status: 'invalid' }));
     }
 
     const paymentId = this.paymentGateway.getTransactionRef(vnpayQuery);
     const payment = await this.paymentsRepository.findById(paymentId);
 
     if (!payment) {
-      return res.redirect(`${frontendUrl}/payments?status=not_found`);
+      return res.redirect(buildRedirect({ status: 'not_found' }));
     }
 
     const returnedAmount = this.paymentGateway.getAmount(vnpayQuery);
     if (returnedAmount !== payment.amount) {
       await this.paymentsRepository.setStatus(paymentId, 'failed');
-      return res.redirect(`${frontendUrl}/payments?status=amount_mismatch`);
+      return res.redirect(buildRedirect({ status: 'amount_mismatch', paymentId }));
     }
 
     if (isSuccess) {
       if (payment.status === 'success') {
-        return res.redirect(`${frontendUrl}/payments?status=success&paymentId=${paymentId}`);
+        return res.redirect(buildRedirect({ status: 'success', paymentId }));
       }
 
       const updated = await this.markPaymentSuccess(
@@ -343,11 +369,11 @@ export class PaymentsService {
         vnpayQuery,
       );
       await this.onPaymentSuccess(updated);
-      return res.redirect(`${frontendUrl}/payments?status=success&paymentId=${paymentId}`);
+      return res.redirect(buildRedirect({ status: 'success', paymentId }));
     }
 
     await this.paymentsRepository.setStatus(paymentId, 'failed');
-    return res.redirect(`${frontendUrl}/payments?status=failed&paymentId=${paymentId}`);
+    return res.redirect(buildRedirect({ status: 'failed', paymentId }));
   }
 
   async handleVnpayIpn(query: Record<string, string>) {
