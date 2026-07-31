@@ -242,21 +242,25 @@ export class CourtsService {
       throw new BadRequestException('File không tồn tại');
     }
 
-    await this.findOne(id, user);
+    const court = await this.findOne(id, user);
 
     const uploaded = await this.s3Service.upload(file, 'courts');
     const count = await this.courtsRepository.countCourtImages(id);
 
-    return this.courtsRepository.createCourtImage({
+    const image = await this.courtsRepository.createCourtImage({
       courtId: id,
       url: uploaded.url,
       position: count,
       isThumbnail: count === 0,
     });
+
+    await this.invalidateCourtCache(id, court.venueId);
+    await this.queueService.syncVenueToElastic(court.venueId);
+    return image;
   }
 
   async removeImage(courtId: string, imageId: string, user: JwtPayloadReturn) {
-    await this.findOne(courtId, user);
+    const court = await this.findOne(courtId, user);
 
     const image = await this.courtsRepository.findCourtImageById(imageId);
     if (!image || image.courtId !== courtId) {
@@ -267,7 +271,11 @@ export class CourtsService {
     if (key) {
       await this.s3Service.delete(key);
     }
-    return this.courtsRepository.deleteCourtImage(imageId);
+
+    const deleted = await this.courtsRepository.deleteCourtImage(imageId);
+    await this.invalidateCourtCache(courtId, court.venueId);
+    await this.queueService.syncVenueToElastic(court.venueId);
+    return deleted;
   }
 
   async getAvailability(id: string, date: string, user?: JwtPayloadReturn) {

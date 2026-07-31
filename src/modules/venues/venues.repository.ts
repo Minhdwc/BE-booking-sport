@@ -15,7 +15,7 @@ export class VenuesRepository {
       include: {
         courts: {
           where: { status: 'active' },
-          include: { sport: true },
+          include: { sport: true, courtImages: { orderBy: { position: 'asc' } } },
         },
         venueImages: {
           orderBy: { position: 'asc' },

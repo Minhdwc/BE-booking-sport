@@ -42,7 +42,7 @@ export class SearchService {
         include: {
           courts: {
             where: { status: 'active' },
-            include: { sport: true },
+            include: { sport: true, courtImages: { orderBy: { position: 'asc' } } },
           },
           venueImages: { orderBy: { position: 'asc' } },
         },
@@ -70,7 +70,7 @@ export class SearchService {
           include: {
             courts: {
               where: { status: 'active' },
-              include: { sport: true },
+              include: { sport: true, courtImages: { orderBy: { position: 'asc' } } },
             },
             venueImages: { orderBy: { position: 'asc' } },
           },
@@ -170,7 +170,7 @@ export class SearchService {
       include: {
         courts: {
           where: { status: 'active' },
-          include: { sport: true },
+          include: { sport: true, courtImages: { orderBy: { position: 'asc' } } },
         },
         venueImages: { orderBy: { position: 'asc' } },
       },
