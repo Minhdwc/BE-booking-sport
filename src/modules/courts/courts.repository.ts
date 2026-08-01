@@ -126,4 +126,15 @@ export class CourtsRepository {
   countCourtImages(courtId: string) {
     return this.prisma.courtImages.count({ where: { courtId } });
   }
+
+  findBlocksInRange(courtId: string, from: Date, to: Date) {
+    return this.prisma.courtBlock.findMany({
+      where: {
+        courtId,
+        startAt: { lt: to },
+        endAt: { gt: from },
+      },
+      orderBy: { startAt: 'asc' },
+    });
+  }
 }

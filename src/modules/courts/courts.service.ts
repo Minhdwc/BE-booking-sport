@@ -319,15 +319,25 @@ export class CourtsService {
     }
 
     const bookedItems = await this.courtsRepository.findBookedItems(id, bookingDate);
+    const dayStart = new Date(bookingDate);
+    dayStart.setUTCHours(0, 0, 0, 0);
+    const dayEnd = new Date(bookingDate);
+    dayEnd.setUTCHours(23, 59, 59, 999);
+    const courtBlocks = await this.courtsRepository.findBlocksInRange(id, dayStart, dayEnd);
 
     const slots = generatedSlots.map((slot) => {
       const slotStart = this.timeStringToDate(slot.startTime);
       const slotEnd = this.timeStringToDate(slot.endTime);
+      const slotStartAt = this.combineBookingDateAndTime(bookingDate, slotStart);
+      const slotEndAt = this.combineBookingDateAndTime(bookingDate, slotEnd);
 
       const isBooked = bookedItems.some(
         (booked) =>
           booked.startTime.getTime() < slotEnd.getTime() &&
           booked.endTime.getTime() > slotStart.getTime(),
+      );
+      const isBlocked = courtBlocks.some(
+        (block) => block.startAt.getTime() < slotEndAt.getTime() && block.endAt.getTime() > slotStartAt.getTime(),
       );
       const isPast = isSlotStartInPast(date, slot.startTime);
 
@@ -336,7 +346,7 @@ export class CourtsService {
         endTime: `${slot.endTime}:00`,
         durationMinutes: slot.durationMinutes,
         subtotal: slot.subtotal,
-        status: isBooked ? 'booked' : isPast ? 'past' : 'available',
+        status: isBooked || isBlocked ? 'booked' : isPast ? 'past' : 'available',
       };
     });
 
@@ -367,5 +377,11 @@ export class CourtsService {
     const hours = Math.floor(minutes / 60);
     const mins = minutes % 60;
     return new Date(Date.UTC(1970, 0, 1, hours, mins, 0, 0));
+  }
+
+  private combineBookingDateAndTime(date: Date, startTime: Date): Date {
+    const playAt = new Date(date);
+    playAt.setUTCHours(startTime.getUTCHours(), startTime.getUTCMinutes(), 0, 0);
+    return playAt;
   }
 }

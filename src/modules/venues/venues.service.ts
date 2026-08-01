@@ -32,7 +32,7 @@ export class VenuesService {
       where.id = ownedVenueIds.length > 0 ? { in: ownedVenueIds } : { in: [] };
     }
 
-    const search = query.search?.trim();
+    const search = query.search?.trim() ?? '';
     if (search) {
       where.OR = [
         { name: { contains: search, mode: 'insensitive' } },
@@ -47,8 +47,8 @@ export class VenuesService {
       JSON.stringify({
         page,
         limit,
-        search: query.search ?? '',
-        role: user?.role ?? 'public',
+        search,
+        scope: this.resolveVenueListCacheScope(user),
       }),
     );
     const cached = await this.redis.getJson<any>(cacheKey);
@@ -86,6 +86,14 @@ export class VenuesService {
       void this.queueService.recordVenueView(id);
     }
     return venue;
+  }
+
+  private resolveVenueListCacheScope(user?: JwtPayloadReturn): string {
+    if (user?.role === 'owner' && user.id) {
+      return `owner:${user.id}`;
+    }
+    // Guest, user, admin đều query cùng tập venue (không filter owner).
+    return 'all';
   }
 
   private async invalidateVenueCache(id?: string) {

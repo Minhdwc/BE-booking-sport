@@ -116,17 +116,108 @@ export class BookingsService {
     const finalAmount = totalAmount - discountAmount;
     const holdSeconds = 600;
     const expiresAt = new Date(Date.now() + holdSeconds * 1000);
+    const bookingItems = preparedItems.map(
+      ({ courtName, venueName, venueIdForNotify, ...item }) => item,
+    );
 
-    const booking = await this.bookingsRepository.create({
-      userId: user.id,
-      bookingCode: `BK${Date.now().toString(36).toUpperCase()}${Math.random().toString(36).slice(2, 6).toUpperCase()}`,
-      status: 'waiting_payment',
-      totalAmount,
-      discountAmount,
-      finalAmount,
-      note: dto.note,
-      expiresAt,
-      items: preparedItems.map(({ courtName, venueName, venueIdForNotify, ...item }) => item),
+    const booking = await this.prisma.$transaction(async (tx) => {
+      for (const courtId of [...new Set(bookingItems.map((item) => item.courtId))]) {
+        await tx.court.update({
+          where: { id: courtId },
+          data: { updatedAt: new Date() },
+        });
+      }
+
+      for (const item of bookingItems) {
+        const existingItems = await tx.bookingItem.findMany({
+          where: {
+            courtId: item.courtId,
+            date: item.date,
+            status: 'active',
+            booking: {
+              status: { in: ['waiting_payment', 'confirmed', 'completed', 'paid_at_venue'] },
+            },
+          },
+          select: { startTime: true, endTime: true },
+        });
+
+        if (
+          existingItems.some(
+            (existing) =>
+              existing.startTime.getTime() < item.endTime.getTime() &&
+              existing.endTime.getTime() > item.startTime.getTime(),
+          )
+        ) {
+          throw new ConflictException(
+            `Khung giờ ${item.startTime.toISOString().slice(11, 16)}–${item.endTime.toISOString().slice(11, 16)} đã được đặt`,
+          );
+        }
+
+        const { startAt, endAt } = this.buildSlotBounds(item.date, item.startTime, item.endTime);
+        const blocked = await tx.courtBlock.findFirst({
+          where: {
+            courtId: item.courtId,
+            startAt: { lt: endAt },
+            endAt: { gt: startAt },
+          },
+        });
+        if (blocked) {
+          throw new BadRequestException(
+            `Khung giờ ${item.startTime.toISOString().slice(11, 16)}–${item.endTime.toISOString().slice(11, 16)} đang bị khóa sân`,
+          );
+        }
+      }
+
+      return tx.booking.create({
+        data: {
+          userId: user.id,
+          bookingCode: `BK${Date.now().toString(36).toUpperCase()}${Math.random().toString(36).slice(2, 6).toUpperCase()}`,
+          status: 'waiting_payment',
+          totalAmount,
+          discountAmount,
+          finalAmount,
+          note: dto.note,
+          expiresAt,
+          items: {
+            create: bookingItems.map((item) => {
+              const startAt = new Date(item.date);
+              startAt.setUTCHours(
+                item.startTime.getUTCHours(),
+                item.startTime.getUTCMinutes(),
+                0,
+                0,
+              );
+              const endAt = new Date(item.date);
+              endAt.setUTCHours(item.endTime.getUTCHours(), item.endTime.getUTCMinutes(), 0, 0);
+
+              return {
+                courtId: item.courtId,
+                venueId: item.venueId,
+                date: item.date,
+                startTime: item.startTime,
+                endTime: item.endTime,
+                startAt,
+                endAt,
+                durationMinutes: item.durationMinutes,
+                pricePerHour: item.pricePerHour,
+                subtotal: item.subtotal,
+              };
+            }),
+          },
+        },
+        include: {
+          user: {
+            select: { id: true, name: true, email: true, phone: true },
+          },
+          items: {
+            include: {
+              court: { include: { sport: true, venue: true } },
+              venue: true,
+            },
+          },
+          payments: true,
+        },
+      });
     });
 
     await this.queueService.scheduleBookingExpiry(booking.id, holdSeconds * 1000);
@@ -225,6 +316,20 @@ export class BookingsService {
         ) {
           throw new ConflictException(
             `Khung giờ ${item.startTime.toISOString().slice(11, 16)}–${item.endTime.toISOString().slice(11, 16)} đã được đặt`,
+          );
+        }
+
+        const { startAt, endAt } = this.buildSlotBounds(item.date, item.startTime, item.endTime);
+        const blocked = await tx.courtBlock.findFirst({
+          where: {
+            courtId: item.courtId,
+            startAt: { lt: endAt },
+            endAt: { gt: startAt },
+          },
+        });
+        if (blocked) {
+          throw new BadRequestException(
+            `Khung giờ ${item.startTime.toISOString().slice(11, 16)}–${item.endTime.toISOString().slice(11, 16)} đang bị khóa sân`,
           );
         }
       }
@@ -415,6 +520,9 @@ export class BookingsService {
       if (conflict) {
         throw new ConflictException(`Khung giờ ${item.startTime}–${item.endTime} đã được đặt`);
       }
+
+      const { startAt, endAt } = this.buildSlotBounds(bookingDate, startTime, endTime);
+      await this.assertNoCourtBlock(item.courtId, startAt, endAt, `${item.startTime}–${item.endTime}`);
 
       preparedItems.push({
         courtId: court.id,
@@ -626,6 +734,32 @@ export class BookingsService {
     const playAt = new Date(date);
     playAt.setUTCHours(startTime.getUTCHours(), startTime.getUTCMinutes(), 0, 0);
     return playAt;
+  }
+
+  private buildSlotBounds(date: Date, startTime: Date, endTime: Date) {
+    return {
+      startAt: this.combineBookingDateAndTime(date, startTime),
+      endAt: this.combineBookingDateAndTime(date, endTime),
+    };
+  }
+
+  private async assertNoCourtBlock(
+    courtId: string,
+    startAt: Date,
+    endAt: Date,
+    label: string,
+  ) {
+    const blocked = await this.prisma.courtBlock.findFirst({
+      where: {
+        courtId,
+        startAt: { lt: endAt },
+        endAt: { gt: startAt },
+      },
+    });
+
+    if (blocked) {
+      throw new BadRequestException(`Khung giờ ${label} đang bị khóa sân`);
+    }
   }
 
   private parseTimeToMinutes(time: string) {
