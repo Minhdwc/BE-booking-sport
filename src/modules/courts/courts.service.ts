@@ -96,6 +96,7 @@ export class CourtsService {
 
   private async invalidateCourtCache(courtId?: string, venueId?: string) {
     await this.redis.invalidatePattern(CACHE_KEYS.courtList('*'));
+    await this.redis.invalidatePattern('cache:search:*');
     if (courtId) {
       await this.redis.del(CACHE_KEYS.courtDetail(courtId));
     }
@@ -337,7 +338,9 @@ export class CourtsService {
           booked.endTime.getTime() > slotStart.getTime(),
       );
       const isBlocked = courtBlocks.some(
-        (block) => block.startAt.getTime() < slotEndAt.getTime() && block.endAt.getTime() > slotStartAt.getTime(),
+        (block) =>
+          block.startAt.getTime() < slotEndAt.getTime() &&
+          block.endAt.getTime() > slotStartAt.getTime(),
       );
       const isPast = isSlotStartInPast(date, slot.startTime);
 

@@ -112,8 +112,8 @@ export class PaymentsService {
     return this.paymentsRepository.create({
       bookingId: dto.bookingId,
       amount: booking.finalAmount,
-      gateway: method,
-      status: user.role === 'user' ? 'pending' : dto.status,
+      gateway: method ?? 'vnpay',
+      status: user.role === 'user' ? 'pending' : (dto.status ?? 'pending'),
       venuePaymentAccountId: dto.venuePaymentAccountId,
     });
   }
@@ -182,7 +182,7 @@ export class PaymentsService {
       ...(data.status && { status: data.status }),
       ...(data.venuePaymentAccountId && { venuePaymentAccountId: data.venuePaymentAccountId }),
       ...(data.transactionCode && { transactionCode: data.transactionCode }),
-      ...(data.status === 'success' && { paidAt: existing.paidAt }),
+      ...(data.status === 'success' && !existing.paidAt && { paidAt: new Date() }),
     });
 
     if (data.status && data.status !== oldStatus) {
@@ -238,7 +238,8 @@ export class PaymentsService {
 
     await this.paymentsRepository.incrementRetryCount(paymentId);
 
-    const defaultReturnUrl = process.env.VNPAY_RETURN_URL || 'http://localhost:3001/api/v1/payments/vnpay-return';
+    const defaultReturnUrl =
+      process.env.VNPAY_RETURN_URL || 'http://localhost:3001/api/v1/payments/vnpay-return';
     const returnUrl =
       platform === 'mobile'
         ? `${defaultReturnUrl}${defaultReturnUrl.includes('?') ? '&' : '?'}platform=mobile`
@@ -278,6 +279,12 @@ export class PaymentsService {
       throw new BadRequestException('Booking đã hết hạn giữ chỗ');
     }
 
+    if (process.env.ENABLE_DEMO_PAYMENT !== 'true') {
+      throw new BadRequestException(
+        'Phương thức thanh toán demo không khả dụng. Vui lòng dùng VNPay.',
+      );
+    }
+
     const savedMethod = dto.userPaymentMethodId
       ? await this.userPaymentMethodsRepository.findById(dto.userPaymentMethodId)
       : await this.userPaymentMethodsRepository.findDefaultForUser(user.id);
@@ -311,7 +318,7 @@ export class PaymentsService {
     this.socketGateway.sendBookingStatusUpdate(user.id, {
       bookingId: updated.bookingId,
       status: 'confirmed',
-      courtName: updated.booking?.items[0]?.court.name,
+      courtName: updated.booking.items[0]?.court.name,
     });
 
     return {
@@ -434,28 +441,32 @@ export class PaymentsService {
   ) {
     const existing = await this.paymentsRepository.findById(paymentId);
     const oldStatus = existing?.status;
+    const bookingId = existing?.bookingId;
 
-    await this.paymentsRepository.markSuccess(
+    if (!existing || !bookingId) {
+      throw new NotFoundException('Payment không tồn tại');
+    }
+
+    if (existing.status === 'success') {
+      return existing;
+    }
+
+    await this.paymentsRepository.markSuccessAndConfirmBooking(
       paymentId,
+      bookingId,
       transactionCode,
       gatewayResponse,
       method,
     );
 
-    const payment = await this.paymentsRepository.findById(paymentId);
-    if (!payment) {
-      throw new NotFoundException('Payment không tồn tại');
-    }
-
-    await this.paymentsRepository.confirmBooking(payment.bookingId);
-    await this.queueService.cancelBookingExpiry(payment.bookingId);
+    await this.queueService.cancelBookingExpiry(bookingId);
 
     await this.paymentsRepository.createAuditLog({
       actorId: null,
       module: 'booking',
       action: 'booking.confirmed',
       entityType: 'booking',
-      entityId: payment.bookingId,
+      entityId: bookingId,
       fromValue: 'waiting_payment',
       toValue: 'confirmed',
       note: transactionCode,
@@ -466,13 +477,18 @@ export class PaymentsService {
       module: 'payment',
       action: 'payment.success',
       entityType: 'payment',
-      entityId: payment.id,
+      entityId: paymentId,
       fromValue: oldStatus,
       toValue: 'success',
       note: transactionCode,
     });
 
-    await this.queueService.recordPaymentStatistic(payment.id);
+    await this.queueService.recordPaymentStatistic(paymentId);
+
+    const payment = await this.paymentsRepository.findById(paymentId);
+    if (!payment?.booking) {
+      throw new NotFoundException('Payment không tồn tại');
+    }
 
     return payment;
   }
@@ -515,7 +531,15 @@ export class PaymentsService {
         status: 'confirmed',
         paymentId: payment.id,
         paymentStatus: 'success',
+        eventType: 'payment_success',
       });
     }
+
+    const firstItem = payment.booking.items[0];
+    this.socketGateway.sendBookingStatusUpdate(payment.booking.user.id, {
+      bookingId: payment.bookingId,
+      status: 'confirmed',
+      courtName: firstItem.court.name,
+    });
   }
 }

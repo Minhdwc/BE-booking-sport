@@ -8,6 +8,30 @@ export class SearchVenuesQueryDto extends PaginationQueryDto {
   q?: string;
 
   @IsOptional()
+  @IsString()
+  sport?: string;
+
+  @IsOptional()
+  @IsString()
+  city?: string;
+
+  @IsOptional()
+  @IsString()
+  district?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  minPrice?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  maxPrice?: number;
+
+  @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '@/database/prisma.service';
 
@@ -179,21 +179,87 @@ export class PaymentsRepository {
         gateway: method ?? 'vnpay',
         ...(gatewayResponse && { gatewayResponse }),
       },
-      include: {
-        booking: {
-          include: {
-            user: { select: { id: true, name: true, email: true, phone: true } },
-            items: {
-              include: {
-                court: { include: { venue: true } },
-                venue: true,
-              },
+      include: this.paymentInclude(),
+    });
+  }
+
+  markSuccessAndConfirmBooking(
+    paymentId: string,
+    bookingId: string,
+    transactionCode: string,
+    gatewayResponse?: Prisma.InputJsonValue,
+    method?: string,
+  ) {
+    return this.prisma.$transaction(async (tx) => {
+      const existing = await tx.payment.findUnique({
+        where: { id: paymentId },
+        select: { id: true, status: true },
+      });
+
+      if (!existing) {
+        throw new NotFoundException('Payment không tồn tại');
+      }
+
+      if (existing.status === 'success') {
+        const payment = await tx.payment.findUnique({
+          where: { id: paymentId },
+          include: this.paymentInclude(),
+        });
+        if (!payment) {
+          throw new NotFoundException('Payment không tồn tại');
+        }
+        return payment;
+      }
+
+      const booking = await tx.booking.findUnique({
+        where: { id: bookingId },
+        select: { status: true, expiresAt: true },
+      });
+
+      if (!booking || booking.status !== 'waiting_payment') {
+        throw new BadRequestException('Booking không còn ở trạng thái chờ thanh toán');
+      }
+
+      if (booking.expiresAt && booking.expiresAt.getTime() <= Date.now()) {
+        throw new BadRequestException('Booking đã hết hạn giữ chỗ');
+      }
+
+      const payment = await tx.payment.update({
+        where: { id: paymentId, status: { not: 'success' } },
+        data: {
+          status: 'success',
+          transactionCode,
+          paidAt: new Date(),
+          gateway: method ?? 'vnpay',
+          ...(gatewayResponse && { gatewayResponse }),
+        },
+        include: this.paymentInclude(),
+      });
+
+      await tx.booking.update({
+        where: { id: bookingId, status: 'waiting_payment' },
+        data: { status: 'confirmed' },
+      });
+
+      return payment;
+    });
+  }
+
+  private paymentInclude() {
+    return {
+      booking: {
+        include: {
+          user: { select: { id: true, name: true, email: true, phone: true } },
+          items: {
+            include: {
+              court: { include: { venue: true } },
+              venue: true,
             },
           },
         },
-        venuePaymentAccount: true,
       },
-    });
+      venuePaymentAccount: true,
+    } satisfies Prisma.PaymentInclude;
   }
 
   confirmBooking(id: string) {

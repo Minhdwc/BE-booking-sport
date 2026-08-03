@@ -99,7 +99,8 @@ export class QueueService {
         delay: delayMs,
         jobId: `booking-expire-${bookingId}`,
         removeOnComplete: true,
-        removeOnFail: true,
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 5000 },
       },
     );
   }

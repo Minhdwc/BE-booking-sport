@@ -12,6 +12,14 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import {
+  ApiBearerAuth,
+  ApiBody,
+  ApiConsumes,
+  ApiOperation,
+  ApiParam,
+  ApiTags,
+} from '@nestjs/swagger';
 import { memoryStorage } from 'multer';
 import { CurrentUser } from '@/common/decorators/current-user.decorator';
 import { Public } from '@/common/decorators/public.decorator';
@@ -23,6 +31,7 @@ import { DTOCreateVenue, DTOUpdateVenue } from './venues.dto';
 import { VenuesService } from './venues.service';
 import { SearchService } from '@/modules/search/search.service';
 
+@ApiTags('Venues')
 @Controller('venues')
 export class VenuesController {
   constructor(
@@ -32,6 +41,7 @@ export class VenuesController {
 
   @Public()
   @Get()
+  @ApiOperation({ summary: 'Danh sách venue' })
   findAll(@Query() query: PaginationQueryDto, @CurrentUser() user?: JwtPayloadReturn) {
     return this.venuesService.findAll(user, query);
   }
@@ -39,12 +49,17 @@ export class VenuesController {
   @Get(':id/owners')
   @UseGuards(RolesGuard)
   @Roles('admin')
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Danh sách owner của venue (admin)' })
+  @ApiParam({ name: 'id', description: 'Venue ID' })
   listOwners(@Param('id') id: string) {
     return this.venuesService.listOwners(id);
   }
 
   @Public()
   @Get(':id')
+  @ApiOperation({ summary: 'Chi tiết venue' })
+  @ApiParam({ name: 'id', description: 'Venue ID' })
   async findOne(@Param('id') id: string, @CurrentUser() user?: JwtPayloadReturn) {
     const venue = await this.venuesService.findOne(id, { trackView: true });
     if (user?.id) {
@@ -56,6 +71,8 @@ export class VenuesController {
   @Post()
   @UseGuards(RolesGuard)
   @Roles('admin', 'owner')
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Tạo venue mới' })
   create(@Body() bodyPayload: DTOCreateVenue, @CurrentUser() user: JwtPayloadReturn) {
     return this.venuesService.create(bodyPayload, user);
   }
@@ -63,6 +80,16 @@ export class VenuesController {
   @Post(':id/images')
   @UseGuards(RolesGuard)
   @Roles('admin', 'owner')
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Upload ảnh venue' })
+  @ApiConsumes('multipart/form-data')
+  @ApiParam({ name: 'id', description: 'Venue ID' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { file: { type: 'string', format: 'binary' } },
+    },
+  })
   @UseInterceptors(
     FileInterceptor('file', {
       storage: memoryStorage(),
@@ -80,6 +107,9 @@ export class VenuesController {
   @Patch(':id')
   @UseGuards(RolesGuard)
   @Roles('admin', 'owner')
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Cập nhật venue' })
+  @ApiParam({ name: 'id', description: 'Venue ID' })
   update(
     @Param('id') id: string,
     @Body() bodyPayload: DTOUpdateVenue,
@@ -91,6 +121,10 @@ export class VenuesController {
   @Delete(':id/images/:imageId')
   @UseGuards(RolesGuard)
   @Roles('admin', 'owner')
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Xóa ảnh venue' })
+  @ApiParam({ name: 'id', description: 'Venue ID' })
+  @ApiParam({ name: 'imageId', description: 'Image ID' })
   removeImage(
     @Param('id') id: string,
     @Param('imageId') imageId: string,
@@ -102,6 +136,9 @@ export class VenuesController {
   @Delete(':id')
   @UseGuards(RolesGuard)
   @Roles('admin', 'owner')
+  @ApiBearerAuth('access-token')
+  @ApiOperation({ summary: 'Xóa venue' })
+  @ApiParam({ name: 'id', description: 'Venue ID' })
   remove(@Param('id') id: string, @CurrentUser() user: JwtPayloadReturn) {
     return this.venuesService.remove(id, user);
   }

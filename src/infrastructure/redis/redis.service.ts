@@ -10,7 +10,7 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
 
   constructor(private readonly config: ConfigService) {}
 
-  onModuleInit() {
+  async onModuleInit() {
     this.client = new Redis({
       ...getRedisOptions(this.config),
       lazyConnect: true,
@@ -18,6 +18,7 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     });
     this.client.on('connect', () => this.logger.log('Redis connected'));
     this.client.on('error', (err) => this.logger.error('Redis error', err));
+    await this.client.connect();
   }
 
   onModuleDestroy() {

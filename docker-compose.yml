@@ -55,7 +55,6 @@ services:
       start_period: 40s
 
   app:
-    profiles: [full]
     build:
       context: .
       dockerfile: Dockerfile
@@ -71,6 +70,7 @@ services:
       REDIS_PORT: 6379
       ELASTICSEARCH_URL: http://elasticsearch:9200
       ELASTICSEARCH_ENABLED: ${ELASTICSEARCH_ENABLED:-false}
+    command: sh -c "npx prisma db push && npm run start:prod"
     depends_on:
       postgres:
         condition: service_healthy

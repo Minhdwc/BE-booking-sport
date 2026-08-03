@@ -8,6 +8,8 @@ export const CACHE_TTL = {
   searchSuggestions: 60,
   searchPopular: 3600,
   recentlyViewed: 7 * 24 * 60 * 60,
+  sportsList: 300,
+  sportsDetail: 600,
 } as const;
 
 export const CACHE_KEYS = {
@@ -19,4 +21,6 @@ export const CACHE_KEYS = {
   search: (hash: string) => `cache:search:${hash}`,
   searchPopular: 'cache:search:popular',
   recentlyViewed: (userId: string) => `cache:search:recent:${userId}`,
+  sportsList: (hash: string) => `cache:sports:list:${hash}`,
+  sportsDetail: (id: string) => `cache:sports:detail:${id}`,
 } as const;

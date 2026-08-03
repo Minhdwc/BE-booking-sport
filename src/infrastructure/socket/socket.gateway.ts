@@ -8,11 +8,17 @@ import {
   WebSocketServer,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
+import { PrismaService } from '@/database/prisma.service';
 import { JwtProvider } from '@/utils/jwt.util';
 
 @WebSocketGateway({
   cors: {
-    origin: ['http://localhost:3000', 'http://localhost:3002'],
+    origin: [
+      'http://localhost:3000',
+      'http://localhost:3002',
+      'https://public-user-booking-fe.vercel.app',
+      'https://website-booking-fe-erp.vercel.app',
+    ],
     credentials: true,
   },
   namespace: '/',
@@ -22,6 +28,8 @@ export class SocketGateway implements OnGatewayInit, OnGatewayConnection, OnGate
   server: Server;
 
   private readonly logger = new Logger(SocketGateway.name);
+
+  constructor(private readonly prisma: PrismaService) {}
 
   afterInit() {
     this.logger.log('WebSocket Gateway initialized');
@@ -63,13 +71,28 @@ export class SocketGateway implements OnGatewayInit, OnGatewayConnection, OnGate
   }
 
   @SubscribeMessage('join-venue')
-  handleJoinVenue(client: Socket, venueId: string) {
-    if (!client.data.userId) {
+  async handleJoinVenue(client: Socket, venueId: string) {
+    if (!client.data.userId || !venueId) {
       return;
     }
 
-    client.join(`venue:${venueId}`);
-    this.logger.log(`Client ${client.id} joined venue room: ${venueId}`);
+    const role = client.data.userRole as string;
+    if (role === 'admin') {
+      client.join(`venue:${venueId}`);
+      return;
+    }
+
+    if (role === 'owner') {
+      const venue = await this.prisma.venue.findUnique({
+        where: { id: venueId },
+        select: { userId: true },
+      });
+      if (!venue || venue.userId !== client.data.userId) {
+        return;
+      }
+      client.join(`venue:${venueId}`);
+      this.logger.log(`Client ${client.id} joined venue room: ${venueId}`);
+    }
   }
 
   @SubscribeMessage('leave-venue')

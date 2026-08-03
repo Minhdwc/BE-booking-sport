@@ -18,20 +18,36 @@ export class SearchService {
   async searchVenues(query: SearchVenuesQueryDto = {}) {
     const { page, limit, skip } = getPagination(query);
     const keyword = query.q?.trim() ?? query.search?.trim() ?? '';
+    const filters = {
+      sport: query.sport?.trim(),
+      city: query.city?.trim(),
+      district: query.district?.trim(),
+      minPrice: query.minPrice,
+      maxPrice: query.maxPrice,
+    };
+    const hasFilters = Boolean(
+      filters.sport ||
+      filters.city ||
+      filters.district ||
+      filters.minPrice != null ||
+      filters.maxPrice != null,
+    );
 
-    if (!keyword) {
+    if (!keyword && !hasFilters) {
       return toPaginatedResult([], 0, page, limit);
     }
 
-    await this.recordPopularSearch(keyword);
+    if (keyword) {
+      await this.recordPopularSearch(keyword);
+    }
 
-    const cacheKey = CACHE_KEYS.search(JSON.stringify({ q: keyword, page, limit }));
+    const cacheKey = CACHE_KEYS.search(JSON.stringify({ q: keyword, page, limit, ...filters }));
     const cached = await this.redis.getJson<any>(cacheKey);
     if (cached) {
       return cached;
     }
 
-    const elasticResult = await this.elasticsearch.searchVenues(keyword, skip, limit);
+    const elasticResult = await this.elasticsearch.searchVenues(keyword, skip, limit, filters);
     let data: any[] = [];
     let total = 0;
 
@@ -53,12 +69,31 @@ export class SearchService {
         .filter((venue): venue is NonNullable<typeof venue> => Boolean(venue));
     } else {
       const where: Prisma.VenueWhereInput = {
-        OR: [
-          { name: { contains: keyword, mode: 'insensitive' } },
-          { address: { contains: keyword, mode: 'insensitive' } },
-          { description: { contains: keyword, mode: 'insensitive' } },
-          { courts: { some: { name: { contains: keyword, mode: 'insensitive' } } } },
-        ],
+        ...(keyword && {
+          OR: [
+            { name: { contains: keyword, mode: 'insensitive' } },
+            { address: { contains: keyword, mode: 'insensitive' } },
+            { description: { contains: keyword, mode: 'insensitive' } },
+            { courts: { some: { name: { contains: keyword, mode: 'insensitive' } } } },
+          ],
+        }),
+        ...(filters.city && { city: { equals: filters.city, mode: 'insensitive' } }),
+        ...(filters.district && { district: { equals: filters.district, mode: 'insensitive' } }),
+        ...(filters.sport && {
+          courts: { some: { sport: { name: { equals: filters.sport, mode: 'insensitive' } } } },
+        }),
+        ...(filters.minPrice != null || filters.maxPrice != null
+          ? {
+              courts: {
+                some: {
+                  basePriceVnd: {
+                    ...(filters.minPrice != null && { gte: filters.minPrice }),
+                    ...(filters.maxPrice != null && { lte: filters.maxPrice }),
+                  },
+                },
+              },
+            }
+          : {}),
       };
 
       const [rows, count] = await Promise.all([
@@ -216,8 +251,11 @@ export class SearchService {
         id: venue.id,
         name: venue.name,
         location: venue.address,
+        city: venue.city,
+        district: venue.district,
         description: venue.description,
         sports,
+        courtNames: venue.courts.map((court) => court.name),
         minPrice,
         ratingAverage: venue.ratingAverage,
         ratingCount: venue.ratingCount,

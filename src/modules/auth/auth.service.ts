@@ -51,7 +51,7 @@ export class AuthService {
       process.env.REFRESH_TOKEN_LIFE!,
     );
 
-    const { password, ...userWithoutPassword } = user;
+    const { password, verifyToken, ...userWithoutPassword } = user;
 
     return { user: userWithoutPassword, accessToken, refreshToken };
   }
@@ -117,7 +117,7 @@ export class AuthService {
     return { user: userWithoutPassword, accessToken, refreshToken };
   }
 
-  refresh(refreshToken: string) {
+  async refresh(refreshToken: string) {
     if (!refreshToken?.trim()) {
       throw new UnauthorizedException('Refresh token không tồn tại');
     }
@@ -127,10 +127,19 @@ export class AuthService {
       throw new UnauthorizedException('Refresh token không hợp lệ hoặc đã hết hạn');
     }
 
+    const user = await this.authRepository.findById(payload.id);
+    if (!user) {
+      throw new UnauthorizedException('Tài khoản không tồn tại');
+    }
+
+    if (!user.isActive) {
+      throw new UnauthorizedException('Tài khoản đã bị khóa');
+    }
+
     const tokenPayload = {
-      id: payload.id,
-      email: payload.email,
-      role: payload.role,
+      id: user.id,
+      email: user.email,
+      role: user.role,
     };
 
     const accessToken = JwtProvider.generateToken(
@@ -191,6 +200,12 @@ export class AuthService {
     if (!user) {
       throw new NotFoundException('Không tìm thấy user');
     }
-    return user;
+
+    if (!user.isActive) {
+      throw new UnauthorizedException('Tài khoản đã bị khóa');
+    }
+
+    const { password, verifyToken, ...userWithoutPassword } = user;
+    return userWithoutPassword;
   }
 }

@@ -88,13 +88,20 @@ export class CourtsRepository {
   }
 
   findBookedItems(courtId: string, date: Date) {
+    const now = new Date();
     return this.prisma.bookingItem.findMany({
       where: {
         courtId,
         date,
         status: 'active',
         booking: {
-          status: { in: ['waiting_payment', 'confirmed', 'completed'] },
+          OR: [
+            { status: { in: ['confirmed', 'completed', 'paid_at_venue'] } },
+            {
+              status: 'waiting_payment',
+              OR: [{ expiresAt: { gt: now } }, { expiresAt: null }],
+            },
+          ],
         },
       },
       select: {

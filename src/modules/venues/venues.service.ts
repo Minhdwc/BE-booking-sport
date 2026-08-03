@@ -98,9 +98,9 @@ export class VenuesService {
 
   private async invalidateVenueCache(id?: string) {
     await this.redis.invalidatePattern(CACHE_KEYS.venueList('*'));
+    await this.redis.invalidatePattern('cache:search:*');
     if (id) {
       await this.redis.del(CACHE_KEYS.venueDetail(id));
-      await this.redis.invalidatePattern('cache:search:venues:*');
     }
   }
 

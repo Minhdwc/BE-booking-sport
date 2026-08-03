@@ -3,6 +3,7 @@ import { Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { PrismaService } from '@/database/prisma.service';
 import { SocketGateway } from '@/infrastructure/socket/socket.gateway';
+import { BookingsRepository } from '@/modules/bookings/bookings.repository';
 import { BOOKING_JOBS, QUEUE_NAMES } from '../queue.constants';
 import { QueueService } from '../queue.service';
 
@@ -12,6 +13,7 @@ export class BookingExpireProcessor extends WorkerHost {
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly bookingsRepository: BookingsRepository,
     private readonly queueService: QueueService,
     private readonly socketGateway: SocketGateway,
   ) {
@@ -37,23 +39,7 @@ export class BookingExpireProcessor extends WorkerHost {
       return;
     }
 
-    await this.prisma.bookingItem.updateMany({
-      where: { bookingId },
-      data: { status: 'cancelled' },
-    });
-
-    const updated = await this.prisma.booking.update({
-      where: { id: bookingId },
-      data: { status: 'expired' },
-      include: {
-        user: { select: { id: true, name: true, email: true } },
-        items: {
-          include: {
-            court: { include: { venue: true } },
-          },
-        },
-      },
-    });
+    const updated = await this.bookingsRepository.expire(bookingId);
 
     const firstItem = updated.items[0];
     const dateStr = firstItem?.date.toISOString().split('T')[0];
@@ -102,6 +88,7 @@ export class BookingExpireProcessor extends WorkerHost {
       this.socketGateway.broadcastToVenue(item.venueId, 'booking:updated', {
         bookingId: updated.id,
         status: updated.status,
+        eventType: 'expired',
         courtId: item.courtId,
         courtName: item.court.name,
         date: item.date.toISOString().split('T')[0],

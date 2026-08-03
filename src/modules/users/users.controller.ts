@@ -9,12 +9,15 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { ApiBearerAuth, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import { Roles } from '@/common/decorators/roles.decorator';
 import { PaginationQueryDto } from '@/common/dto/pagination.dto';
 import { RolesGuard } from '@/common/guards';
 import { UsersService } from './users.service';
 import { CreateUserDto, UpdateUserDto } from './users.dto';
 
+@ApiTags('Users')
+@ApiBearerAuth('access-token')
 @Controller('users')
 @UseGuards(RolesGuard)
 @Roles('admin')
@@ -22,16 +25,20 @@ export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
   @Get()
+  @ApiOperation({ summary: 'Danh sách user (admin)' })
   findAll(@Query() query: PaginationQueryDto) {
     return this.usersService.findAll(query);
   }
 
   @Get(':id')
+  @ApiOperation({ summary: 'Chi tiết user (admin)' })
+  @ApiParam({ name: 'id', description: 'User ID' })
   findOne(@Param('id') id: string) {
     return this.usersService.findOne(id);
   }
 
   @Post()
+  @ApiOperation({ summary: 'Tạo user (admin)' })
   create(@Body() createUserDto: CreateUserDto) {
     return this.usersService.create({
       name: createUserDto.name,
@@ -46,6 +53,8 @@ export class UsersController {
   }
 
   @Patch(':id')
+  @ApiOperation({ summary: 'Cập nhật user (admin)' })
+  @ApiParam({ name: 'id', description: 'User ID' })
   update(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto) {
     return this.usersService.update(id, {
       name: updateUserDto.name,
@@ -60,6 +69,8 @@ export class UsersController {
   }
 
   @Delete(':id')
+  @ApiOperation({ summary: 'Xóa user (admin)' })
+  @ApiParam({ name: 'id', description: 'User ID' })
   remove(@Param('id') id: string) {
     return this.usersService.remove(id);
   }

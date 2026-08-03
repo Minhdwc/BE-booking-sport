@@ -114,32 +114,23 @@ export class BookingsService {
     const totalAmount = preparedItems.reduce((sum, item) => sum + item.subtotal, 0);
     const discountAmount = 0;
     const finalAmount = totalAmount - discountAmount;
-    const holdSeconds = 600;
-    const expiresAt = new Date(Date.now() + holdSeconds * 1000);
+    const expiresAt = new Date(Date.now() + 600 * 1000);
     const bookingItems = preparedItems.map(
       ({ courtName, venueName, venueIdForNotify, ...item }) => item,
     );
 
     const booking = await this.prisma.$transaction(async (tx) => {
-      for (const courtId of [...new Set(bookingItems.map((item) => item.courtId))]) {
-        await tx.court.update({
-          where: { id: courtId },
-          data: { updatedAt: new Date() },
-        });
-      }
+      await this.bookingsRepository.lockCourtsForUpdate(
+        tx,
+        bookingItems.map((item) => item.courtId),
+      );
 
       for (const item of bookingItems) {
-        const existingItems = await tx.bookingItem.findMany({
-          where: {
-            courtId: item.courtId,
-            date: item.date,
-            status: 'active',
-            booking: {
-              status: { in: ['waiting_payment', 'confirmed', 'completed', 'paid_at_venue'] },
-            },
-          },
-          select: { startTime: true, endTime: true },
-        });
+        const existingItems = await this.bookingsRepository.findConflictingItemsInTx(
+          tx,
+          item.courtId,
+          item.date,
+        );
 
         if (
           existingItems.some(
@@ -148,9 +139,10 @@ export class BookingsService {
               existing.endTime.getTime() > item.startTime.getTime(),
           )
         ) {
-          throw new ConflictException(
-            `Khung giờ ${item.startTime.toISOString().slice(11, 16)}–${item.endTime.toISOString().slice(11, 16)} đã được đặt`,
-          );
+          throw new ConflictException({
+            code: 'BOOKING_SLOT_CONFLICT',
+            message: `Khung giờ ${item.startTime.toISOString().slice(11, 16)}–${item.endTime.toISOString().slice(11, 16)} đã được đặt`,
+          });
         }
 
         const { startAt, endAt } = this.buildSlotBounds(item.date, item.startTime, item.endTime);
@@ -220,7 +212,7 @@ export class BookingsService {
       });
     });
 
-    await this.queueService.scheduleBookingExpiry(booking.id, holdSeconds * 1000);
+    await this.queueService.scheduleBookingExpiry(booking.id, 600 * 1000);
 
     await this.bookingsRepository.createAuditLog({
       actorId: user.id,
@@ -284,28 +276,22 @@ export class BookingsService {
     const totalAmount = preparedItems.reduce((sum, item) => sum + item.subtotal, 0);
     const discountAmount = 0;
     const finalAmount = totalAmount - discountAmount;
-    const bookingItems = preparedItems.map(({ courtName, venueName, venueIdForNotify, ...item }) => item);
+    const bookingItems = preparedItems.map(
+      ({ courtName, venueName, venueIdForNotify, ...item }) => item,
+    );
 
     const bookingId = await this.prisma.$transaction(async (tx) => {
-      for (const courtId of [...new Set(bookingItems.map((item) => item.courtId))]) {
-        await tx.court.update({
-          where: { id: courtId },
-          data: { updatedAt: new Date() },
-        });
-      }
+      await this.bookingsRepository.lockCourtsForUpdate(
+        tx,
+        bookingItems.map((item) => item.courtId),
+      );
 
       for (const item of bookingItems) {
-        const existingItems = await tx.bookingItem.findMany({
-          where: {
-            courtId: item.courtId,
-            date: item.date,
-            status: 'active',
-            booking: {
-              status: { in: ['waiting_payment', 'confirmed', 'completed', 'paid_at_venue'] },
-            },
-          },
-          select: { startTime: true, endTime: true },
-        });
+        const existingItems = await this.bookingsRepository.findConflictingItemsInTx(
+          tx,
+          item.courtId,
+          item.date,
+        );
 
         if (
           existingItems.some(
@@ -314,9 +300,10 @@ export class BookingsService {
               existing.endTime.getTime() > item.startTime.getTime(),
           )
         ) {
-          throw new ConflictException(
-            `Khung giờ ${item.startTime.toISOString().slice(11, 16)}–${item.endTime.toISOString().slice(11, 16)} đã được đặt`,
-          );
+          throw new ConflictException({
+            code: 'BOOKING_SLOT_CONFLICT',
+            message: `Khung giờ ${item.startTime.toISOString().slice(11, 16)}–${item.endTime.toISOString().slice(11, 16)} đã được đặt`,
+          });
         }
 
         const { startAt, endAt } = this.buildSlotBounds(item.date, item.startTime, item.endTime);
@@ -349,7 +336,12 @@ export class BookingsService {
           items: {
             create: bookingItems.map((item) => {
               const startAt = new Date(item.date);
-              startAt.setUTCHours(item.startTime.getUTCHours(), item.startTime.getUTCMinutes(), 0, 0);
+              startAt.setUTCHours(
+                item.startTime.getUTCHours(),
+                item.startTime.getUTCMinutes(),
+                0,
+                0,
+              );
               const endAt = new Date(item.date);
               endAt.setUTCHours(item.endTime.getUTCHours(), item.endTime.getUTCMinutes(), 0, 0);
 
@@ -518,11 +510,19 @@ export class BookingsService {
           existing.endTime.getTime() > startTime.getTime(),
       );
       if (conflict) {
-        throw new ConflictException(`Khung giờ ${item.startTime}–${item.endTime} đã được đặt`);
+        throw new ConflictException({
+          code: 'BOOKING_SLOT_CONFLICT',
+          message: `Khung giờ ${item.startTime}–${item.endTime} đã được đặt`,
+        });
       }
 
       const { startAt, endAt } = this.buildSlotBounds(bookingDate, startTime, endTime);
-      await this.assertNoCourtBlock(item.courtId, startAt, endAt, `${item.startTime}–${item.endTime}`);
+      await this.assertNoCourtBlock(
+        item.courtId,
+        startAt,
+        endAt,
+        `${item.startTime}–${item.endTime}`,
+      );
 
       preparedItems.push({
         courtId: court.id,
@@ -743,12 +743,7 @@ export class BookingsService {
     };
   }
 
-  private async assertNoCourtBlock(
-    courtId: string,
-    startAt: Date,
-    endAt: Date,
-    label: string,
-  ) {
+  private async assertNoCourtBlock(courtId: string, startAt: Date, endAt: Date, label: string) {
     const blocked = await this.prisma.courtBlock.findFirst({
       where: {
         courtId,

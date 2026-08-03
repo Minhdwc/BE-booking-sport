@@ -55,7 +55,7 @@ export class StatisticProcessor extends WorkerHost {
       return;
     }
 
-    await this.redis.invalidatePattern('cache:dashboard:summary:*');
+    await this.redis.invalidatePattern('cache:dashboard:*');
 
     const venueIds = [...new Set(payment.booking.items.map((item) => item.venueId))];
 

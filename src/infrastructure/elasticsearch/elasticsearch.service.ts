@@ -6,8 +6,11 @@ export type VenueSearchDocument = {
   id: string;
   name: string;
   location: string;
+  city: string;
+  district: string;
   description?: string | null;
   sports: string[];
+  courtNames: string[];
   minPrice: number;
   ratingAverage: number;
   ratingCount: number;
@@ -17,6 +20,14 @@ export type VenueSearchDocument = {
   latitude: number;
   longitude: number;
   updatedAt: string;
+};
+
+export type VenueSearchFilters = {
+  sport?: string;
+  city?: string;
+  district?: string;
+  minPrice?: number;
+  maxPrice?: number;
 };
 
 @Injectable()
@@ -49,8 +60,11 @@ export class ElasticsearchService {
             id: { type: 'keyword' },
             name: { type: 'text' },
             location: { type: 'text' },
+            city: { type: 'keyword' },
+            district: { type: 'keyword' },
             description: { type: 'text' },
             sports: { type: 'keyword' },
+            courtNames: { type: 'text' },
             minPrice: { type: 'integer' },
             ratingAverage: { type: 'float' },
             ratingCount: { type: 'integer' },
@@ -97,6 +111,7 @@ export class ElasticsearchService {
     query: string,
     from = 0,
     size = 20,
+    filters: VenueSearchFilters = {},
   ): Promise<{ ids: string[]; total: number }> {
     if (!this.enabled) {
       return { ids: [], total: 0 };
@@ -104,14 +119,47 @@ export class ElasticsearchService {
 
     try {
       await this.ensureIndex();
+
+      const must: Record<string, unknown>[] = [];
+      if (query.trim()) {
+        must.push({
+          multi_match: {
+            query,
+            fields: ['name^3', 'location^2', 'description', 'sports', 'courtNames^2'],
+            fuzziness: 'AUTO',
+          },
+        });
+      }
+
+      const filter: Record<string, unknown>[] = [];
+      if (filters.sport) {
+        filter.push({ term: { sports: filters.sport } });
+      }
+      if (filters.city) {
+        filter.push({ term: { city: filters.city } });
+      }
+      if (filters.district) {
+        filter.push({ term: { district: filters.district } });
+      }
+      if (filters.minPrice != null || filters.maxPrice != null) {
+        filter.push({
+          range: {
+            minPrice: {
+              ...(filters.minPrice != null && { gte: filters.minPrice }),
+              ...(filters.maxPrice != null && { lte: filters.maxPrice }),
+            },
+          },
+        });
+      }
+
       const response = await axios.post(`${this.baseUrl}/${this.indexName}/_search`, {
         from,
         size,
         query: {
-          multi_match: {
-            query,
-            fields: ['name^3', 'location^2', 'description', 'sports'],
-            fuzziness: 'AUTO',
+          bool: {
+            ...(must.length > 0 && { must }),
+            ...(filter.length > 0 && { filter }),
+            ...(must.length === 0 && filter.length === 0 && { match_all: {} }),
           },
         },
         sort: [{ bookingCount: 'desc' }, { ratingAverage: 'desc' }],

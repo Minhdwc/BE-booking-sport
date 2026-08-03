@@ -78,13 +78,20 @@ export class BookingsRepository {
   }
 
   findActiveItemsForCourtDate(courtId: string, date: Date, excludeBookingId?: string) {
+    const now = new Date();
     return this.prisma.bookingItem.findMany({
       where: {
         courtId,
         date,
         status: 'active',
         booking: {
-          status: { in: ['waiting_payment', 'confirmed', 'completed', 'paid_at_venue'] },
+          OR: [
+            { status: { in: ['confirmed', 'completed', 'paid_at_venue'] } },
+            {
+              status: 'waiting_payment',
+              OR: [{ expiresAt: { gt: now } }, { expiresAt: null }],
+            },
+          ],
           ...(excludeBookingId ? { id: { not: excludeBookingId } } : {}),
         },
       },
@@ -94,6 +101,37 @@ export class BookingsRepository {
         endTime: true,
         bookingId: true,
       },
+    });
+  }
+
+  async lockCourtsForUpdate(tx: Prisma.TransactionClient, courtIds: string[]) {
+    const sortedIds = [...new Set(courtIds)].sort();
+    for (const courtId of sortedIds) {
+      await tx.court.update({
+        where: { id: courtId },
+        data: { updatedAt: new Date() },
+      });
+    }
+  }
+
+  findConflictingItemsInTx(tx: Prisma.TransactionClient, courtId: string, date: Date) {
+    const now = new Date();
+    return tx.bookingItem.findMany({
+      where: {
+        courtId,
+        date,
+        status: 'active',
+        booking: {
+          OR: [
+            { status: { in: ['confirmed', 'completed', 'paid_at_venue'] } },
+            {
+              status: 'waiting_payment',
+              OR: [{ expiresAt: { gt: now } }, { expiresAt: null }],
+            },
+          ],
+        },
+      },
+      select: { startTime: true, endTime: true },
     });
   }
 
@@ -130,12 +168,7 @@ export class BookingsRepository {
         items: {
           create: data.items.map((item) => {
             const startAt = new Date(item.date);
-            startAt.setUTCHours(
-              item.startTime.getUTCHours(),
-              item.startTime.getUTCMinutes(),
-              0,
-              0,
-            );
+            startAt.setUTCHours(item.startTime.getUTCHours(), item.startTime.getUTCMinutes(), 0, 0);
             const endAt = new Date(item.date);
             endAt.setUTCHours(item.endTime.getUTCHours(), item.endTime.getUTCMinutes(), 0, 0);
 

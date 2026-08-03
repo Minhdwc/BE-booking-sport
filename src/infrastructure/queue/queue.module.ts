@@ -3,6 +3,7 @@ import { Global, Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { MailModule } from '@/infrastructure/mail/mail.module';
 import { PrismaModule } from '@/database/prisma.module';
+import { BookingsRepository } from '@/modules/bookings/bookings.repository';
 import { BookingExpireProcessor } from './processors/booking-expire.processor';
 import { ElasticProcessor } from './processors/elastic.processor';
 import { EmailProcessor } from './processors/email.processor';
@@ -37,6 +38,7 @@ import { QueueService } from './queue.service';
   ],
   providers: [
     QueueService,
+    BookingsRepository,
     EmailProcessor,
     NotificationProcessor,
     BookingExpireProcessor,

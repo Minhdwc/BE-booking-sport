@@ -28,14 +28,18 @@ export class HttpExceptionFilter implements ExceptionFilter {
     const exceptionResponse =
       exception instanceof HttpException ? exception.getResponse() : 'Internal server error';
 
-    const message =
+    const rawMessage =
       typeof exceptionResponse === 'string'
         ? exceptionResponse
         : (exceptionResponse as { message?: string | string[] }).message || 'Error';
 
+    const code = (exceptionResponse as { code?: string })?.code;
+    const message = Array.isArray(rawMessage) ? rawMessage[0] : rawMessage;
+
     response.status(status).json({
       statusCode: status,
-      message: Array.isArray(message) ? message[0] : message,
+      ...(code && { code }),
+      message,
     });
   }
 }
