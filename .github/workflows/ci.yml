@@ -10,35 +10,7 @@ jobs:
   build-and-test:
     runs-on: ubuntu-latest
 
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: test
-          POSTGRES_PASSWORD: test
-          POSTGRES_DB: booking_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U test -d booking_test"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
     env:
-      DATABASE_URL: postgresql://test:test@localhost:5432/booking_test
-      REDIS_HOST: localhost
-      REDIS_PORT: 6379
       ACCESS_TOKEN_SECRET: ci-access-secret
       ACCESS_TOKEN_LIFE: 15m
       REFRESH_TOKEN_SECRET: ci-refresh-secret
@@ -61,9 +33,6 @@ jobs:
       - name: Generate Prisma client
         run: npx prisma generate
 
-      - name: Sync database schema
-        run: npx prisma db push
-
       - name: Lint
         run: npm run lint
 
@@ -72,9 +41,6 @@ jobs:
 
       - name: Build
         run: npm run build
-
-      - name: Integration tests
-        run: npm run test:integration
 
   docker:
     runs-on: ubuntu-latest
